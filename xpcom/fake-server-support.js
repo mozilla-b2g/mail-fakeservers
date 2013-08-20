@@ -66,13 +66,6 @@ Cu.import('resource://gre/modules/FileUtils.jsm', fu);
 // exposes HttpServer
 Cu.import('resource://fakeserver/modules/httpd.js');
 Cu.import('resource://gre/modules/NetUtil.jsm');
-// import goodies from loader.js
-const {
-  atob,
-  btoa,
-  TextEncoder,
-  TextDecoder
-} = Cu.import("resource://gre/modules/commonjs/toolkit/loader.js", {});
 
 
 // -- create a sandbox
