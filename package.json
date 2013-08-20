@@ -1,0 +1,22 @@
+{
+  "name": "mail-fakeservers",
+  "version": "0.0.0",
+  "description": "ERROR: No README.md file found!",
+  "main": "index.js",
+  "bin": {
+    "mail-fakeservers": "server.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/lightsofapollo/mail-fakeservers.git"
+  },
+  "author": "",
+  "license": "Apache2",
+  "gitHead": "2285871dab7a50588409fe2ee050c1e65e862b3a",
+  "devDependencies": {
+    "mocha": "~1.12.0"
+  }
+}

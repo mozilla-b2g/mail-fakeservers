@@ -66,6 +66,14 @@ Cu.import('resource://gre/modules/FileUtils.jsm', fu);
 // exposes HttpServer
 Cu.import('resource://fakeserver/modules/httpd.js');
 Cu.import('resource://gre/modules/NetUtil.jsm');
+// import goodies from loader.js
+const {
+  atob,
+  btoa,
+  TextEncoder,
+  TextDecoder
+} = Cu.import("resource://gre/modules/commonjs/toolkit/loader.js", {});
+
 
 // -- create a sandbox
 // We could use a scoped subscript load, but keeping the fake-servers in their
@@ -87,47 +95,39 @@ function makeSandbox(name) {
       wantXHRConstructor: false
     });
   // provide some globals our subscripts love...
-  sandbox.atob = window.atob.bind(window);
-  sandbox.btoa = window.btoa.bind(window);
-  sandbox.TextEncoder = window.TextEncoder;
-  sandbox.TextDecoder = window.TextDecoder;
+  sandbox.atob = atob
+  sandbox.btoa = btoa;
+  sandbox.TextEncoder = TextEncoder;
+  sandbox.TextDecoder = TextDecoder;
   return sandbox;
 }
-// from:
-// developer.mozilla.org/en-US/docs/Code_snippets/File_I_O#Synchronously
-function synchronousReadFile(nsfile) {
-  var data = '';
-  var fstream = Components.classes["@mozilla.org/network/file-input-stream;1"].
-    createInstance(Components.interfaces.nsIFileInputStream);
-  var cstream = Components.classes["@mozilla.org/intl/converter-input-stream;1"].
-    createInstance(Components.interfaces.nsIConverterInputStream);
-  fstream.init(nsfile, -1, 0, 0);
-  cstream.init(fstream, 'UTF-8', 0, 0);
 
-  var str = {};
-  var read = 0;
-  do {
-    read = cstream.readString(0xffffffff, str);
-    data += str.value;
-  } while (read != 0);
-  cstream.close();
-
-  return data;
+/**
+ * Simple wrapper around xhr to read files based on their path.
+ * @private
+ */
+function synchronousReadFile(path) {
+  // xhr wrapper can read from resource:// and this is less code then the
+  // alternative methods... It probably is slow but its irrelevant for the small
+  // load we have.
+  var XHR = Components.Constructor('@mozilla.org/xmlextras/xmlhttprequest;1');
+  var req = new XHR();
+  req.open('GET', path, false);
+  req.send();
+  return req.responseText;
 }
 
 function loadInSandbox(base, relpath, sandbox) {
-  relpath = base.concat(relpath);
-  var nsfile = fu.FileUtils.getFile('CurWorkD', relpath);
-  //console.log('loadInSandbox resolved', relpath, 'to', nsfile.path);
-  var jsstr = synchronousReadFile(nsfile);
+  var path = base.concat(relpath).join('/');
+  var jsstr = synchronousReadFile(path);
   // the moz idiom is that synchronous file loading is okay for unit test
   // situations like this.  xpcshell load or even normal Cu.import would sync
   // load.
-  Cu.evalInSandbox(jsstr, sandbox, '1.8', nsfile.path);
+  Cu.evalInSandbox(jsstr, sandbox, '1.8', path);
 }
 
 var imapSandbox = null;
-var baseFakeserver = ['test-runner', 'chrome', 'fakeserver'];
+var baseFakeserver = ['resource:/', 'fakeserver'];
 function createImapSandbox() {
   if (imapSandbox)
     return;
@@ -558,5 +558,5 @@ return {
   console.error('Problem initializing FakeServerSupport', ex, '\n',
                 ex.stack);
 }
-})(window.xpcComponents || Components,
-   window.xpcComponents ? false : true);
+})((typeof window !== 'undefined' && window.xpcComponents) || Components,
+   typeof window !== 'undefined' && window.xpcComponents ? false : true);
