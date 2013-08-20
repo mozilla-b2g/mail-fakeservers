@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Determine current location
-SOURCE="${BASH_SOURCE[0]}"
+SOURCE="${BASH_SOURCE[0]}/../../../"
 if [ -h "$SOURCE" ];
 then
   ORIG_SOURCE=$SOURCE;
@@ -11,7 +11,8 @@ else
   DIR="$( cd "$( dirname "$SOURCE" )" && pwd )"
 fi
 
-ROOT=`dirname $DIR`
+ROOT=`dirname $DIR/`
+
 which xpcshell 2>&1 1> /dev/null
 
 if [ "$?" != "0" ]
