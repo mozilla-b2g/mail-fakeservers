@@ -4,14 +4,6 @@ var FakeServerProxyHandler = (function() {
   var TcpSocket = new Components.classes['@mozilla.org/tcp-socket;1'];
 
   /**
-   * Aliases for server creation functions.
-   */
-  var SERVER_TO_ALIAS = {
-    imap: FakeServerSupport.makeIMAPServer.bind(FakeServerSupport),
-    smtp: FakeServerSupport.makeSMTPServer.bind(FakeServerSupport)
-  };
-
-  /**
    * @param {Number} port for handler.
    * @param {Number} [host="127.0.0.1"] for handler.
    * @constructor
@@ -21,9 +13,10 @@ var FakeServerProxyHandler = (function() {
     this.port = port;
 
     // connect to the socket
-    this.socket = TcpSocket.open(this.host, this.port, { binaryType: 'arraybuffer' });
+    this.socket =
+      TcpSocket.open(this.host, this.port, { binaryType: 'arraybuffer' });
 
-    this.socket.ondata = function(evt) {
+    this.socket.ondata = (function(evt) {
       // we need to wrap the ArrayBuffer in a Uint8Array otherwise
       // jsonWireProtocol cannot parse (because instanceof ArrayBuffer does not
       // work as expected in this context)
@@ -32,7 +25,7 @@ var FakeServerProxyHandler = (function() {
       // parse out the request and handle it.
       var [id, content] = jsonWireProtocol.parse(data);
       this.handleRequest(id, content);
-    }.bind(this);
+    }.bind(this));
 
     // if the socket closes we are done
     this.socket.onclose = function() {
@@ -40,7 +33,7 @@ var FakeServerProxyHandler = (function() {
     };
 
     // start server
-    this.controlServer = FakeServerSupport.makeControlHttpServer();
+    this.controlServer = FakeServerSupport.makeControlHttpServer().server;
 
     // must be last sync action otherwise it blocks.
     EventLoop.start();
@@ -64,7 +57,6 @@ var FakeServerProxyHandler = (function() {
         var string = jsonWireProtocol.stringify(
           [id, object]
         );
-        console.log('got string', string);
 
         // write into an array buffer
         var encoder = new TextEncoder();
@@ -83,9 +75,19 @@ var FakeServerProxyHandler = (function() {
     },
 
     /**
+     * Close all existing servers.
+     *
+     * @param {Function} callback to signal cleanup.
+     */
+    cleanup: function(callback) {
+      this.controlServer.cleanup();
+      callback();
+    },
+
+    /**
      * Returns the control server port.
      *
-     * @param {Function} callback [Object]
+     * @param {Function} callback [Object].
      */
     getControlPort: function(callback) {
       callback(this.controlServer.port);

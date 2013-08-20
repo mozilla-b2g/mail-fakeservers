@@ -3,14 +3,20 @@ suite('imap_stack', function() {
   var creds = { username: 'testy', password: 'testy' };
 
   var subject;
+  var server;
   setup(function(done) {
-    fakeserver.create(function(err, server) {
+    fakeserver.create(function(err, _server) {
       if (err) return done(err);
+      server = _server;
       server.createImapStack({ credentials: creds }, function(err, stack) {
         subject = stack;
         done(err);
       });
     });
+  });
+
+  teardown(function() {
+    server.kill();
   });
 
   suite('#getFolderByPath', function() {

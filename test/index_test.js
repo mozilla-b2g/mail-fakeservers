@@ -6,12 +6,26 @@ suite('fakemail', function() {
 
   var creds = { user: 'testy', password: 'testy' };
   var subject;
+  var stack;
 
   function connect() {
     setup(function(done) {
       fakemail.create(function(err, server) {
         subject = server;
         done();
+      });
+    });
+  }
+
+  teardown(function() {
+    subject && subject.kill();
+  });
+
+  function createStack() {
+    setup(function(done) {
+      subject.createImapStack({ credentials: creds }, function(err, _stack) {
+        stack = _stack;
+        done(err);
       });
     });
   }
@@ -38,15 +52,8 @@ suite('fakemail', function() {
     });
   });
 
-  suite('#createImapStack', function() {
-    var stack;
-
-    setup(function(done) {
-      subject.createImapStack({ credentials: creds }, function(err, _stack) {
-        stack = _stack;
-        done(err);
-      });
-    });
+  test('#createImapStack', function() {
+    createStack();
 
     test('stack details', function() {
       assert.ok(stack instanceof IMAPStack);
@@ -72,6 +79,29 @@ suite('fakemail', function() {
         socket.end();
         done();
       });
+    });
+  });
+
+  suite('#cleanupStacks', function() {
+    createStack();
+
+    function isClosed(port, callback) {
+      net.connect(port).on('error', function(err) {
+        assert.equal(err.code, 'ECONNREFUSED');
+        callback();
+      });
+    }
+
+    setup(function(done) {
+      subject.cleanupStacks(done);
+    });
+
+    test('closes imap', function(done) {
+      isClosed(stack.imapPort, done);
+    });
+
+    test('closes smtp', function(done) {
+      isClosed(stack.smtpPort, done);
     });
   });
 });
