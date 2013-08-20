@@ -12,7 +12,7 @@ const mozIJSSubScriptLoader = Cc[
 );
 
   // try to start a server
-let EventLoop = (function() {
+EventLoop = (function() {
   var exit = false;
 
   return {
@@ -77,7 +77,6 @@ try {
     { username: 'testy', password: 'testy' }
   );
 
-  console.log(Object.keys(server), server.port);
   EventLoop.start();
 
 } catch(e) {
