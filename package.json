@@ -1,7 +1,7 @@
 {
   "name": "mail-fakeservers",
-  "version": "0.0.0",
-  "description": "ERROR: No README.md file found!",
+  "version": "0.0.1",
+  "description": "fake imap/smtp servers from mozilla-comms",
   "main": "index.js",
   "bin": {
     "mail-fakeservers": "server.js"
@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/lightsofapollo/mail-fakeservers.git"
+    "url": "git://github.com/mozilla-b2g/mail-fakeservers.git"
   },
   "author": "",
   "license": "Apache2",
@@ -19,7 +19,6 @@
     "mocha": "~1.12.0"
   },
   "dependencies": {
-    "empty-port": "0.0.1",
     "json-wire-protocol": "~0.2.1",
     "debug": "~0.7.2"
   }
