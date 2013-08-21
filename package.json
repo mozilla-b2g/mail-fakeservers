@@ -1,11 +1,8 @@
 {
   "name": "mail-fakeservers",
-  "version": "0.0.1",
-  "description": "fake imap/smtp servers from mozilla-comms",
+  "version": "0.0.2",
+  "description": "fake imap/smtp servers from comm-central",
   "main": "index.js",
-  "bin": {
-    "mail-fakeservers": "server.js"
-  },
   "scripts": {
     "test": "make test"
   },
