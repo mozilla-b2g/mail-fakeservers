@@ -1,3 +1,6 @@
+# 0.0.3
+  - bugfix path lookup
+
 # 0.0.2
   - bugfix with bin path
 
