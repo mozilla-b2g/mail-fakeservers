@@ -134,7 +134,7 @@ function createImapSandbox() {
 }
 
 var activesyncSandbox = null;
-var baseActiveSync = ['deps', 'activesync'];
+var baseActiveSync = ['resource:/', 'activesync'];
 var codepages = ['AirSyncBase.js', 'AirSync.js', 'Calendar.js', 'Common.js',
                  'ComposeMail.js', 'Contacts2.js', 'Contacts.js',
                  'DocumentLibrary.js', 'Email2.js', 'Email.js',
