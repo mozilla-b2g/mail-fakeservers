@@ -235,7 +235,10 @@ function makeSMTPServer(creds, imapDaemon) {
 
 function makeActiveSyncServer(creds, logToDump) {
   createActiveSyncSandbox();
-  var server = new activesyncSandbox.ActiveSyncServer({ debug: false });
+  var server = new activesyncSandbox.ActiveSyncServer({
+    debug: false,
+    creds: creds,
+  });
   server.start(0);
 
   var httpServer = server.server;

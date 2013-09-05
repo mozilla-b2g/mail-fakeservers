@@ -433,6 +433,7 @@ ActiveSyncFolder.prototype = {
  */
 function ActiveSyncServer(options) {
   this.server = new HttpServer(options);
+  this.creds = options.creds;
   this._useNowTimestamp = null;
 
   const folderType = ActiveSyncCodepages.FolderHierarchy.Enums.Type;
@@ -598,7 +599,14 @@ ActiveSyncServer.prototype = {
    * @param response the nsIHttpResponse
    */
   _options: function(request, response) {
-    response.setStatusLine('1.1', 200, 'OK');
+    var auth = atob(request.getHeader("Authorization")
+                    .replace("Basic ", "")).split(':');
+    if (auth[0].split('@')[0] != this.creds.username ||
+        auth[1] != this.creds.password) {
+      response.setStatusLine('1.1', '401', 'Wrong credentials');
+    } else {
+      response.setStatusLine('1.1', 200, 'OK');
+    }
     response.setHeader('Public', 'OPTIONS,POST');
     response.setHeader('Allow', 'OPTIONS,POST');
     response.setHeader('MS-ASProtocolVersions', '14.0');
