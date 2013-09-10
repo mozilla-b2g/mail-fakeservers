@@ -106,6 +106,7 @@ function synchronousReadFile(path) {
   var XHR = Components.Constructor('@mozilla.org/xmlextras/xmlhttprequest;1');
   var req = new XHR();
   req.open('GET', path, false);
+  req.responseType = 'text';
   req.send();
   return req.responseText;
 }
