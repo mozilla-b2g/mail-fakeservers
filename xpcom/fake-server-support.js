@@ -179,13 +179,11 @@ function makeIMAPServer(creds, opts) {
   var imapExtensions = (opts && opts.imapExtensions) || ['RFC2195'];
 
   var daemon = new imapSandbox.imapDaemon(0);
+  daemon.kUsername = creds.username;
+  daemon.kPassword = creds.password;
 
   function createHandler(d) {
     var handler = new imapSandbox.IMAP_RFC3501_handler(d);
-
-    // hardcoded defaults are "username" and "password"
-    handler.kUsername = creds.username;
-    handler.kPassword = creds.password;
 
     for (var i = 0; i < imapExtensions.length; i++) {
       var imapExt = imapExtensions[i];
@@ -477,6 +475,13 @@ console.log('----> responseData:::', responseData);
       };
     });
     return messages;
+  },
+
+  _imap_backdoor_changeCredentials: function(imapDaemon, req, imapHandler) {
+    if (req.credentials.username)
+      imapDaemon.kUsername = req.credentials.username;
+    if (req.credentials.password)
+      imapDaemon.kPassword = req.credentials.password;
   },
 
   killActiveServers: function() {

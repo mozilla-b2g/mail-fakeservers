@@ -549,6 +549,16 @@ ActiveSyncServer.prototype = {
    */
   _commandHandler: function(request, response) {
     try {
+      var auth = atob(request.getHeader("Authorization")
+                      .replace("Basic ", "")).split(':');
+      if (auth[0].split('@')[0] !== this.creds.username ||
+          auth[1] !== this.creds.password) {
+        response.setStatusLine('1.1', '401', 'Wrong credentials');
+        if (this.logResponse)
+          this.logResponse(request, response, null);
+        return;
+      }
+
       if (request.method === 'OPTIONS') {
         if (this.logRequest)
           this.logRequest(request, null);
@@ -599,14 +609,7 @@ ActiveSyncServer.prototype = {
    * @param response the nsIHttpResponse
    */
   _options: function(request, response) {
-    var auth = atob(request.getHeader("Authorization")
-                    .replace("Basic ", "")).split(':');
-    if (auth[0].split('@')[0] != this.creds.username ||
-        auth[1] != this.creds.password) {
-      response.setStatusLine('1.1', '401', 'Wrong credentials');
-    } else {
-      response.setStatusLine('1.1', 200, 'OK');
-    }
+    response.setStatusLine('1.1', 200, 'OK');
     response.setHeader('Public', 'OPTIONS,POST');
     response.setHeader('Allow', 'OPTIONS,POST');
     response.setHeader('MS-ASProtocolVersions', '14.0');
@@ -1371,6 +1374,13 @@ ActiveSyncServer.prototype = {
         subject: msg.subject
       };
     });
+  },
+
+  _backdoor_changeCredentials: function(data) {
+    if (data.credentials.username)
+      this.creds.username = data.credentials.username;
+    if (data.credentials.password)
+      this.creds.password = data.credentials.password;
   },
 
   _backdoor_removeMessagesByServerId: function(data) {
