@@ -750,8 +750,6 @@ function parseMailboxList(aList) {
  */
 function IMAP_RFC3501_handler(daemon) {
 
-  this.kUsername = "user";
-  this.kPassword = "password";
   this.kAuthSchemes = []; // Added by RFC2195 extension. Test may modify as needed.
   this.kCapabilities = [/*"LOGINDISABLED", "STARTTLS",*/]; // Test may modify as needed.
   this.kUidCommands = ["FETCH", "STORE", "SEARCH", "COPY"];
@@ -1051,8 +1049,8 @@ IMAP_RFC3501_handler.prototype = {
   LOGIN : function (args) {
     if (this.kCapabilities.some(function(c) { return c == "LOGINDISABLED"; } ))
       return "BAD old-style LOGIN is disabled, use AUTHENTICATE";
-    if (args[0] == this.kUsername &&
-        args[1] == this.kPassword) {
+    if (args[0] == this._daemon.kUsername &&
+        args[1] == this._daemon.kPassword) {
       this._state = IMAP_STATE_AUTHED;
       return "OK authenticated";
     }
@@ -2369,8 +2367,8 @@ var IMAP_RFC2195_extension = {
   authPLAINCred : function (line)
   {
     var req = AuthPLAIN.decodeLine(line);
-    if (req.username == this.kUsername &&
-        req.password == this.kPassword) {
+    if (req.username == this._daemon.kUsername &&
+        req.password == this._daemon.kPassword) {
       this._state = IMAP_STATE_AUTHED;
       return "OK Hello friend! Friends give friends good advice: Next time, use CRAM-MD5";
     }
@@ -2392,7 +2390,7 @@ var IMAP_RFC2195_extension = {
     var req = AuthCRAM.decodeLine(line);
     var expectedDigest = AuthCRAM.encodeCRAMMD5(
         this._usedCRAMMD5Challenge, this.kPassword);
-    if (req.username == this.kUsername &&
+    if (req.username == this._daemon.kUsername &&
         req.digest == expectedDigest) {
       this._state = IMAP_STATE_AUTHED;
       return "OK Hello friend!";
@@ -2412,7 +2410,7 @@ var IMAP_RFC2195_extension = {
   authLOGINUsername : function (line)
   {
     var req = AuthLOGIN.decodeLine(line);
-    if (req == this.kUsername)
+    if (req == this._daemon.kUsername)
       this._nextAuthFunction = this.authLOGINPassword;
     else // Don't return error yet, to not reveal valid usernames
       this._nextAuthFunction = this.authLOGINBadUsername;
@@ -2426,7 +2424,7 @@ var IMAP_RFC2195_extension = {
   authLOGINPassword : function (line)
   {
     var req = AuthLOGIN.decodeLine(line);
-    if (req == this.kPassword) {
+    if (req == this._daemon.kPassword) {
       this._state = IMAP_STATE_AUTHED;
       return "OK Hello friend! Where did you pull out this old auth scheme?";
     }
