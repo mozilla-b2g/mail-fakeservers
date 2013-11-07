@@ -1,7 +1,7 @@
 /**
- * Support for loading Thunderbird-derived IMAP and SMTP fake-servers as well
- * as our ActiveSync fake-server.  Thunderbird has NNTP and POP3 that we could
- * steal too.
+ * Support for loading Thunderbird-derived IMAP, POP3 and SMTP
+ * fake-servers as well as our ActiveSync fake-server. Thunderbird has
+ * NNTP that we could steal too.
  *
  * Thunderbird's fake-servers are primarily used to being executed in an
  * xpcshell "global soup" type of context.  load(path) loads things in the
@@ -28,11 +28,12 @@
  *
  * === Communication and control ===
  *
- * If our unit tests are running against a real IMAP server, our manipulation
- * of the server must be asynchronous since we are reusing the e-mail app's
- * own implementation (like APPEND) and there's no way we could do any evil
- * tricks to make things seem synchronous.  This means that all of our test APIs
- * for manipulating servers are async.
+ * If our unit tests are running against a real IMAP/POP3 server, our
+ * manipulation of the server must be asynchronous since we are
+ * reusing the e-mail app's own implementation (like APPEND) and
+ * there's no way we could do any evil tricks to make things seem
+ * synchronous. This means that all of our test APIs for manipulating
+ * servers are async.
  *
  * However, for our fake-servers, we can do things somewhat synchronously.
  *
@@ -51,6 +52,8 @@
  *   per-connection state as well as the parsing logic and some odd stuff
  *   like the username and password.  The imapDaemon really just represents
  *   the (single user) account state in terms of mailboxes and their messages.
+ *
+ * - pop3d.js: The POP3_RFC5034_handler does everything.
  *
  * - smtpd.js: SMTP_RFC2821_handler does everything.  The daemon just
  *   accumulates a 'post' attribute when a message is sent.
@@ -131,6 +134,7 @@ function createImapSandbox() {
   loadInSandbox(baseFakeserver, ['subscript', 'maild.js'], imapSandbox);
   loadInSandbox(baseFakeserver, ['subscript', 'auth.js'], imapSandbox);
   loadInSandbox(baseFakeserver, ['subscript', 'imapd.js'], imapSandbox);
+  loadInSandbox(baseFakeserver, ['subscript', 'pop3d.js'], imapSandbox);
   loadInSandbox(baseFakeserver, ['subscript', 'smtpd.js'], imapSandbox);
 }
 
@@ -206,11 +210,45 @@ function makeIMAPServer(creds, opts) {
   };
 }
 
-function makeSMTPServer(creds, imapDaemon) {
+/**
+ * Synchronously create a fake POP3 server operating on an available port.  The
+ * POP3 server only services a single fake account.
+ */
+function makePOP3Server(creds, opts) {
+    try { createImapSandbox(); } catch(e) { dump(e + e.stack)}
+//  createImapSandbox();
+
+  var daemon = new imapSandbox.pop3Daemon(0);
+  daemon.kUsername = creds.username;
+  daemon.kPassword = creds.password;
+
+  function createHandler(d) {
+    return new imapSandbox.POP3_RFC5034_handler(d);
+  }
+  var server = new imapSandbox.nsMailServer(createHandler, daemon);
+  // take an available port
+  server.start(0);
+  return {
+    daemon: daemon,
+    server: server,
+    // create a handler that isn't talking to anything in order to let us do
+    // IMAP protocol-ish things magicly/directly
+    dummyHandler: createHandler(daemon),
+    port: server._socket.port
+  };
+}
+
+function makeSMTPServer(receiveType, creds, daemon) {
   createImapSandbox();
 
-  var daemon = new imapSandbox.smtpDaemon(function gotMessage(msgStr) {
-    imapDaemon.deliverMessage(msgStr);
+  var smtpDaemon = new imapSandbox.smtpDaemon(function gotMessage(msgStr) {
+    if (receiveType === 'imap') {
+      var imapDaemon = daemon;
+      imapDaemon.deliverMessage(msgStr);
+    } else if (receiveType === 'pop3') {
+      var pop3Daemon = daemon;
+      pop3Daemon.setMessages(pop3Daemon._messages.concat([{fileData: msgStr}]));
+    }
   });
 
   function createHandler(d) {
@@ -222,11 +260,11 @@ function makeSMTPServer(creds, imapDaemon) {
     return handler;
   }
 
-  var server = new imapSandbox.nsMailServer(createHandler, daemon);
+  var server = new imapSandbox.nsMailServer(createHandler, smtpDaemon);
   // take an available port
   server.start(0);
   return {
-    daemon: daemon,
+    daemon: smtpDaemon,
     server: server,
     port: server._socket.port
   };
@@ -290,13 +328,14 @@ function makeActiveSyncServer(creds, logToDump) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Control server; spawns IMAP/SMTP and ActiveSync servers, manipulates IMAP
+// Control server; spawns IMAP/POP3/SMTP/ActiveSync servers,
+// manipulates IMAP/POP3
 //
 // It might make some sense for this to also be the means that we use to return
 // test results some day.
 //
-// This class and/or its IMAP-specific bits could/should probably live in
-// another file.
+// This class and/or its IMAP/POP3-specific bits could/should probably
+// live in another file.
 
 /**
  * Convert an nsIInputStream into a string.
@@ -311,12 +350,14 @@ function stringifyStream(stream) {
 }
 
 /**
- * The control HTTP provides a JSON API to start/stop IMAP servers as well as a
- * JSON API to manipulate the state of those servers in an out-of-band fashion.
+ * The control HTTP provides a JSON API to start/stop IMAP/POP3
+ * servers as well as a JSON API to manipulate the state of those
+ * servers in an out-of-band fashion.
  */
 function ControlServer() {
   // maps IMAP port to an object with a coupled IMAP and SMTP server
   this.imapServerPairsByPort = Object.create(null);
+  this.pop3ServerPairsByPort = Object.create(null);
   this.activeSyncServersByPort = Object.create(null);
 
   this._httpServer = new HttpServer();
@@ -355,7 +396,8 @@ console.log('----> responseData:::', responseData);
     if (reqObj.command === 'make_imap_and_smtp') {
       // credentials should be { username, password }
       var imapServer = makeIMAPServer(reqObj.credentials, reqObj.options);
-      var smtpServer = makeSMTPServer(reqObj.credentials,
+      var smtpServer = makeSMTPServer('imap',
+                                      reqObj.credentials,
                                       imapServer.daemon);
 
       console.log('IMAP server started on port', imapServer.port);
@@ -378,6 +420,33 @@ console.log('----> responseData:::', responseData);
         smtpPort: smtpServer.port,
       };
     }
+    else if (reqObj.command === 'make_pop3_and_smtp') {
+      // credentials should be { username, password }
+      var pop3Server = makePOP3Server(reqObj.credentials, reqObj.options);
+      var smtpServer = makeSMTPServer('pop3',
+                                      reqObj.credentials,
+                                      pop3Server.daemon);
+
+      console.log('POP3 server started on port', pop3Server.port);
+      console.log('SMTP server started on port', smtpServer.port);
+
+      var relPath = '/pop3-' + pop3Server.port;
+      var pairInfo = this.pop3ServerPairsByPort[pop3Server.port] = {
+        relPath: relPath,
+        pop3: pop3Server,
+        smtp: smtpServer
+      };
+
+      this._bindJsonHandler(relPath, pairInfo, this._handlePop3Backdoor);
+
+      return {
+        controlUrl: 'http://localhost:' + this.port + relPath,
+        pop3Host: 'localhost',
+        pop3Port: pop3Server.port,
+        smtpHost: 'localhost',
+        smtpPort: smtpServer.port,
+      };
+    }
     else if (reqObj.command === 'make_activesync') {
       var serverInfo = makeActiveSyncServer(reqObj.credentials,
                                             /* debug: log traffic */ false);
@@ -395,9 +464,18 @@ console.log('----> responseData:::', responseData);
   _handleImapBackdoor: function(pairInfo, reqObj) {
     var imapDaemon = pairInfo.imap.daemon,
         imapHandler = pairInfo.imap.dummyHandler;
-    var responseData =
-          this['_imap_backdoor_' + reqObj.command](imapDaemon, reqObj,
-                                                   imapHandler);
+    var cmdFn = this['_imap_backdoor_' + reqObj.command] ||
+                this['_unified_backdoor_' + reqObj.command];
+    var responseData = cmdFn(imapDaemon, reqObj, imapHandler);
+    return responseData;
+  },
+
+  _handlePop3Backdoor: function(pairInfo, reqObj) {
+    var pop3Daemon = pairInfo.pop3.daemon,
+        pop3Handler = pairInfo.pop3.dummyHandler;
+    var cmdFn = this['_pop3_backdoor_' + reqObj.command] ||
+                this['_unified_backdoor_' + reqObj.command];
+    var responseData = cmdFn(pop3Daemon, reqObj, pop3Handler);
     return responseData;
   },
 
@@ -477,11 +555,35 @@ console.log('----> responseData:::', responseData);
     return messages;
   },
 
-  _imap_backdoor_changeCredentials: function(imapDaemon, req, imapHandler) {
+  _unified_backdoor_changeCredentials: function(daemon, req, handler) {
     if (req.credentials.username)
-      imapDaemon.kUsername = req.credentials.username;
+      daemon.kUsername = req.credentials.username;
     if (req.credentials.password)
-      imapDaemon.kPassword = req.credentials.password;
+      daemon.kPassword = req.credentials.password;
+  },
+
+  _pop3_backdoor_getMessagesInFolder: function(pop3Daemon, req, pop3Handler) {
+    var messages = pop3Daemon._messages.map(function(pop3Message) {
+      return {
+        date: pop3Message.parsed.date,
+        subject: pop3Message.parsed.subject
+      };
+    });
+    return messages;
+  },
+
+  _pop3_backdoor_addMessagesToFolder: function(pop3Daemon, req, pop3Handler) {
+    var existingMessages = pop3Daemon._messages;
+    pop3Daemon.setMessages(
+      existingMessages.concat(req.messages).map(function(msg) {
+        if (msg.fileData) {
+          return msg;
+        } else {
+          return {fileData: msg.msgString};
+        }
+    }));
+    // return the total number of messages in the folder now
+    return pop3Daemon._messages.length;
   },
 
   killActiveServers: function() {
@@ -504,6 +606,24 @@ console.log('----> responseData:::', responseData);
       }
     }
 
+    for (portStr in this.pop3ServerPairsByPort) {
+      var servers = this.pop3ServerPairsByPort[portStr];
+      try {
+        servers.pop3.server.stop();
+      }
+      catch (ex) {
+        console.warn('Problem shutting down POP3 server on port',
+                     servers.pop3.port, '-', ex, '\n', ex.stack);
+      }
+      try {
+        servers.smtp.server.stop();
+      }
+      catch (ex) {
+        console.warn('Problem shutting down SMTP server on port',
+                     servers.smtp.port, '-', ex, '\n', ex.stack);
+      }
+    }
+
     for (portStr in this.activeSyncServersByPort) {
       var info = this.activeSyncServersByPort[portStr];
       try {
@@ -516,6 +636,7 @@ console.log('----> responseData:::', responseData);
     }
 
     this.imapServerPairsByPort = Object.create(null);
+    this.pop3ServerPairsByPort = Object.create(null);
     this.activeSyncServersByPort = Object.create(null);
   },
 
@@ -552,6 +673,7 @@ function makeControlHttpServer() {
 
 return {
   makeIMAPServer: makeIMAPServer,
+  makePOP3Server: makePOP3Server,
   makeSMTPServer: makeSMTPServer,
   makeActiveSyncServer: makeActiveSyncServer,
   makeControlHttpServer: makeControlHttpServer,

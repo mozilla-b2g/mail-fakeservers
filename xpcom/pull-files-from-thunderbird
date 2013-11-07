@@ -35,7 +35,7 @@ cp $FAKESERVER_DIR/maild.js $OUT_SUBSCRIPT
 cp $FAKESERVER_DIR/auth.js $OUT_SUBSCRIPT
 cp $FAKESERVER_DIR/imapd.js $OUT_SUBSCRIPT
 cp $FAKESERVER_DIR/smtpd.js $OUT_SUBSCRIPT
-# we don't care about pop3d.js
+cp $FAKESERVER_DIR/pop3d.js $OUT_SUBSCRIPT
 # we don't care about nntpd.js
 
 
