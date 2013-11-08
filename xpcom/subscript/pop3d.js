@@ -120,6 +120,10 @@ const kPop3StateAuthNeeded = 1; // Not authenticated yet, need username and pass
 const kPop3StateAuthPASS = 2; // got command USER, expecting command PASS
 const kPop3StateTransaction = 3; // Authenticated, can fetch and delete mail
 
+function periodStuff(s) {
+  return s.replace(/^\./mg, '..');
+}
+
 /**
  * This handler implements the bare minimum required by RFC 1939.
  * If dropOnAuthFailure is set, the server will drop the connection
@@ -195,7 +199,7 @@ POP3_RFC1939_handler.prototype = {
       return "-ERR invalid state";
 
     var result = "+OK " + this._daemon._messages[args - 1].size + "\r\n";
-    result += this._daemon._messages[args - 1].fileData;
+    result += periodStuff(this._daemon._messages[args - 1].fileData);
     result += ".";
     return result;
   },
@@ -287,7 +291,7 @@ POP3_RFC2449_handler.prototype = {
         endIdx = nextIdx + 2;
       }
     }
-    result += body.substr(0, endIdx);
+    result += periodStuff(body.substr(0, endIdx));
     result += ".";
     return result;
   },
