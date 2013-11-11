@@ -187,19 +187,34 @@ POP3_RFC1939_handler.prototype = {
   UIDL: function (args) {
     if (this._state != kPop3StateTransaction)
       return "-ERR invalid state";
-    let result = "+OK\r\n";
-    for (let i = 0; i < this._daemon._messages.length; ++i)
-      result += (i + 1) + " " + this._daemon._messages[i].uidl + "\r\n";
 
-    result += ".";
-    return result;
+    args = args.split(' ');
+    var msgNo = args[0];
+    if (msgNo) {
+      let i = parseInt(msgNo, 10) - 1;
+      let msg = this._daemon._messages[i];
+      if (msg) {
+        return "+OK " + (i+1) + " " + msg.uidl + "\r\n";
+      } else {
+        return "-ERR invalid message number";
+      }
+    } else {
+      let result = "+OK\r\n";
+      for (let i = 0; i < this._daemon._messages.length; ++i)
+        result += (i + 1) + " " + this._daemon._messages[i].uidl + "\r\n";
+      result += ".";
+      return result;
+    }
   },
   RETR: function (args) {
     if (this._state != kPop3StateTransaction)
       return "-ERR invalid state";
-
-    var result = "+OK " + this._daemon._messages[args - 1].size + "\r\n";
-    result += periodStuff(this._daemon._messages[args - 1].fileData);
+    var msg = this._daemon._messages[args - 1];
+    if (!msg) {
+      return "-ERR no message with that number";
+    }
+    var result = "+OK " + msg.size + "\r\n";
+    result += periodStuff(msg.fileData);
     result += ".";
     return result;
   },
@@ -271,9 +286,17 @@ POP3_RFC2449_handler.prototype = {
     if (this._state != kPop3StateTransaction)
       return "-ERR invalid state";
 
+    if (this._daemon._messages.length === 0) {
+      return "-ERR no messages in folder";
+    }
+
     args = args.split(' ');
     var msgNo = args[0];
     var lines = args[1];
+
+    if (!this._daemon._messages[msgNo - 1]) {
+      return "-ERR invalid message number";
+    }
 
     var result = "+OK " + this._daemon._messages[msgNo - 1].size + "\r\n";
     // skip the headers
