@@ -85,6 +85,8 @@ function imapDaemon(flags, syncFunc) {
   this.root.addMailbox(this.drafts);
   this.sent = new imapMailbox("Sent", null, this.uidvalidity++);
   this.root.addMailbox(this.sent);
+  this.trash = new imapMailbox("Trash", null, this.uidvalidity++);
+  this.root.addMailbox(this.trash);
   // Always create a 'Custom' folder that does not have special-use purposes
   // so that test code can infer that if they know about a 'Custom' folder then
   // they have synchronized the folder list.  If we only created special folders
