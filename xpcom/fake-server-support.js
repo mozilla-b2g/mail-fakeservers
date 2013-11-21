@@ -466,8 +466,11 @@ console.log('----> responseData:::', responseData);
         imapHandler = pairInfo.imap.dummyHandler;
     var cmdFn = this['_imap_backdoor_' + reqObj.command] ||
                 this['_unified_backdoor_' + reqObj.command];
-    var responseData = cmdFn(imapDaemon, reqObj, imapHandler);
-    return responseData;
+    if (cmdFn) {
+      return cmdFn(imapDaemon, reqObj, imapHandler);
+    } else {
+      return null;
+    }
   },
 
   _handlePop3Backdoor: function(pairInfo, reqObj) {
@@ -475,8 +478,11 @@ console.log('----> responseData:::', responseData);
         pop3Handler = pairInfo.pop3.dummyHandler;
     var cmdFn = this['_pop3_backdoor_' + reqObj.command] ||
                 this['_unified_backdoor_' + reqObj.command];
-    var responseData = cmdFn(pop3Daemon, reqObj, pop3Handler);
-    return responseData;
+    if (cmdFn) {
+      return cmdFn(pop3Daemon, reqObj, pop3Handler);
+    } else {
+      return null;
+    }
   },
 
   _imap_backdoor_setDate: function(imapDaemon, req) {
