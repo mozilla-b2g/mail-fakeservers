@@ -96,6 +96,13 @@ pop3Daemon.prototype = {
     }
     messages.forEach(addMessage, this);
 
+    // Sort the messages in ascending (oldest first) order, to match
+    // the way other servers (Dovecot, Gmail, AOL) return messages.
+    // Our unit tests assume that they come back this way.
+    this._messages.sort(function(a, b) {
+      return a.parsed.date - b.parsed.date;
+    });
+
     for (var i = 0; i < this._messages.length; ++i) {
       this._messages[i].size = this._messages[i].fileData.length;
       this._messages[i].uidl = "UIDL" + gUIDLCount++;
