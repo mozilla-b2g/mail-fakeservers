@@ -252,13 +252,10 @@ function makeSMTPServer(receiveType, creds, daemon) {
   });
 
   function createHandler(d) {
-    var handler = new imapSandbox.SMTP_RFC2821_handler(d);
-
-    handler.kUsername = creds.username;
-    handler.kPassword = creds.password;
-
-    return handler;
+    return new imapSandbox.SMTP_RFC2821_handler(d);
   }
+
+  smtpDaemon._incomingDaemon = daemon;
 
   var server = new imapSandbox.nsMailServer(createHandler, smtpDaemon);
   // take an available port
@@ -566,6 +563,8 @@ console.log('----> responseData:::', responseData);
       daemon.kUsername = req.credentials.username;
     if (req.credentials.password)
       daemon.kPassword = req.credentials.password;
+    if (req.credentials.outgoingPassword)
+      daemon.kSmtpPassword = req.credentials.outgoingPassword;
   },
 
   _pop3_backdoor_getMessagesInFolder: function(pop3Daemon, req, pop3Handler) {
