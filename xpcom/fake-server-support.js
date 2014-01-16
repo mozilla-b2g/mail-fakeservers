@@ -221,6 +221,7 @@ function makePOP3Server(creds, opts) {
   var daemon = new imapSandbox.pop3Daemon(0);
   daemon.kUsername = creds.username;
   daemon.kPassword = creds.password;
+  daemon.dropOnAuthFailure = !!opts.dropOnAuthFailure;
 
   function createHandler(d) {
     return new imapSandbox.POP3_RFC5034_handler(d);
@@ -566,6 +567,10 @@ console.log('----> responseData:::', responseData);
       daemon.kUsername = req.credentials.username;
     if (req.credentials.password)
       daemon.kPassword = req.credentials.password;
+  },
+
+  _pop3_backdoor_setDropOnAuthFailure: function(daemon, req, handler) {
+    daemon.dropOnAuthFailure = req.dropOnAuthFailure;
   },
 
   _pop3_backdoor_getMessagesInFolder: function(pop3Daemon, req, pop3Handler) {
