@@ -131,8 +131,10 @@ SMTP_RFC2821_handler.prototype = {
   authPLAINCred : function (line)
   {
     var req = AuthPLAIN.decodeLine(line);
-    if (req.username == this.kUsername &&
-        req.password == this.kPassword) {
+    var incomingDaemon = this._daemon._incomingDaemon;
+    if (req.username == incomingDaemon.kUsername &&
+        req.password == (incomingDaemon.kSmtpPassword ||
+                         incomingDaemon.kPassword)) {
       this._state = kStateAuthenticated;
       return "235 2.7.0 Hello friend! Friends give friends good advice: Next time, use CRAM-MD5";
     }
