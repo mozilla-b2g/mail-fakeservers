@@ -611,6 +611,7 @@ ActiveSyncServer.prototype = {
     const as = ActiveSyncCodepages.AirSync.Tags;
     const asb = ActiveSyncCodepages.AirSyncBase.Tags;
     const asEnum = ActiveSyncCodepages.AirSync.Enums;
+    const em = ActiveSyncCodepages.Email.Tags;
 
     let syncKey, collectionId, getChanges,
         server = this,
@@ -1274,6 +1275,16 @@ ActiveSyncServer.prototype = {
         subject: msg.subject
       };
     });
+  },
+
+  _backdoor_modifyMessagesInFolder: function(data) {
+    let folder = this._findFolderById(data.folderId);
+
+    data.serverIds.forEach(function(id) {
+      let message = folder.findMessageById(id);
+      folder.changeMessage(message, data.changes);
+    });
+    return true;
   },
 
   _backdoor_changeCredentials: function(data) {
