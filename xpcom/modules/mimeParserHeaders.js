@@ -69,7 +69,9 @@ function getHeaderTokens(value, delimiters, opts) {
       token = token.replace(/\\(.?)/g, "$1");
     this.token = token;
   }
-  Token.prototype.toString = function () { return this.token; };
+  Token.prototype = {
+    toString: function () { return this.token; }
+  };
 
   let tokenStart = undefined;
   let wsp = " \t\r\n";
