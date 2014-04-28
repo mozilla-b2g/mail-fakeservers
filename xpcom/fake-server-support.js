@@ -185,6 +185,7 @@ function makeIMAPServer(creds, opts) {
   var daemon = new imapSandbox.imapDaemon(0);
   daemon.kUsername = creds.username;
   daemon.kPassword = creds.password;
+  daemon.kSmtpPassword = creds.outgoingPassword;
 
   function createHandler(d) {
     var handler = new imapSandbox.IMAP_RFC3501_handler(d);
