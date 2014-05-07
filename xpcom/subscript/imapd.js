@@ -363,12 +363,8 @@ imapMailbox.prototype = {
            this.name;
   },
   get displayName() {
-    var converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"]
-                      .createInstance(Ci.nsIScriptableUnicodeConverter);
-    converter.isInternal = true;
-    converter.charset = "x-imap4-modified-utf7";
-    return converter.ConvertFromUnicode(this.fullName.replace(
-      /([\\"])/g, '\\$1')) + converter.Finish();
+    // We used to do utf7 conversion, but we don't need to do that.
+    return this.fullName;
   },
   get allChildren() {
     return this._children.reduce(function (arr, elem) {
@@ -649,11 +645,7 @@ function formatArg(argument, spec) {
   if (spec == "atom") {
     argument = argument.toUpperCase();
   } else if (spec == "mailbox") {
-    var converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"]
-                      .createInstance(Ci.nsIScriptableUnicodeConverter);
-    converter.isInternal = true;
-    converter.charset = "x-imap4-modified-utf7";
-    argument = converter.ConvertToUnicode(argument);
+    // We used to do utf7 conversion, but we don't need to do that.
   } else if (spec == "string") {
     // Do nothing
   } else if (spec == "flag") {
