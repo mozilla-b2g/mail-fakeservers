@@ -79,6 +79,9 @@ SMTP_RFC2821_handler.prototype = {
   RCPT: function(args) {
     if (this._state == kStateAuthNeeded)
       return "530 5.7.0 Authentication required";
+    if (/invalid/.test(args)) {
+      return "500 bad recipient";
+    }
     return "250 ok";
   },
   DATA: function(args) {
