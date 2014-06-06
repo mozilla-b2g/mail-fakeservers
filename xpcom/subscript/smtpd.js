@@ -234,14 +234,19 @@ SMTP_RFC2821_handler.prototype = {
     if (line == ".") {
       if (this.expectingData) {
         this.expectingData = false;
-        try {
-          this._daemon._deliverFunc(this._daemon.post);
+        if (this._daemon._incomingDaemon.sendShouldFail) {
+          return "500 You told me to reject this message.";
+        } else {
+          try {
+            this._daemon._deliverFunc(this._daemon.post);
+          }
+          catch (ex) {
+            return "451 Problem delivering message: " + ex + '    ' +
+            ex.stack.replace(/\n/g, '   ');
+          }
+
+          return "250 Wonderful article, your style is gorgeous!";
         }
-        catch (ex) {
-          return "451 Problem delivering message: " + ex + '    ' +
-                   ex.stack.replace(/\n/g, '   ');
-        }
-        return "250 Wonderful article, your style is gorgeous!";
       }
       return "503 Huch? How did you get here?";
     }

@@ -485,7 +485,7 @@ ActiveSyncServer.prototype = {
           wbxmlRequest, query, request, response);
 
         if (wbxmlResponse) {
-          response.setStatusLine('1.1', 200, 'OK');
+          response.setStatusLine('1.1', wbxmlResponse.statusCode || 200, 'OK');
           response.setHeader('Content-Type', 'application/vnd.ms-sync.wbxml');
           response.write(encodeWBXML(wbxmlResponse));
           if (this.logResponse)
@@ -1178,6 +1178,10 @@ ActiveSyncServer.prototype = {
   },
 
   _handleCommand_SendMail: function(requestData, query, request, response) {
+    if (this.sendShouldFail) {
+      return { statusCode: 403 };
+    }
+
     const cm = ActiveSyncCodepages.ComposeMail.Tags;
 
     let e = new WBXML.EventParser();
@@ -1195,6 +1199,11 @@ ActiveSyncServer.prototype = {
     // For maximum realism and (more importantly) avoiding weird causality
     // problems, use a now-ish date rather than the extracted compose date.
     var receiveTimestamp = this._makeNowDate().valueOf();
+    var message = convertRfc2822RepToMessageRep(mimeBody);
+
+    if (/invalid@/.test(message.to)) {
+      return { statusCode: 403 };
+    }
 
     if (saveInSentItems) {
       var sentMessage = convertRfc2822RepToMessageRep(mimeBody);
@@ -1204,7 +1213,7 @@ ActiveSyncServer.prototype = {
       var sentFolder = this.foldersByType.sent[0];
       sentFolder.addMessage(sentMessage);
     }
-    var message = convertRfc2822RepToMessageRep(mimeBody);
+
     message.date = receiveTimestamp;
     var inboxFolder = this.foldersByType.inbox[0];
     inboxFolder.addMessage(message);
@@ -1292,6 +1301,10 @@ ActiveSyncServer.prototype = {
       this.creds.username = data.credentials.username;
     if (data.credentials.password)
       this.creds.password = data.credentials.password;
+  },
+
+  _backdoor_toggleSendFailure: function(data) {
+    this.sendShouldFail = data.shouldFail;
   },
 
   _backdoor_removeMessagesByServerId: function(data) {
