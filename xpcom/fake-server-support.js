@@ -569,6 +569,10 @@ console.log('----> responseData:::', responseData);
       daemon.kSmtpPassword = req.credentials.outgoingPassword;
   },
 
+  _unified_backdoor_toggleSendFailure: function(daemon, req, handler) {
+    daemon.sendShouldFail = req.shouldFail;
+  },
+
   _pop3_backdoor_setDropOnAuthFailure: function(daemon, req, handler) {
     daemon.dropOnAuthFailure = req.dropOnAuthFailure;
   },
