@@ -560,6 +560,10 @@ console.log('----> responseData:::', responseData);
     return messages;
   },
 
+  _imap_backdoor_moveSystemFoldersUnderneathInbox: function(daemon, req) {
+    daemon.createSystemFolders({ underInbox: true });
+  },
+
   _unified_backdoor_changeCredentials: function(daemon, req, handler) {
     if (req.credentials.username)
       daemon.kUsername = req.credentials.username;

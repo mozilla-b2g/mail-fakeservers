@@ -336,24 +336,11 @@ function ActiveSyncServer(options) {
   this.creds = options.creds;
   this._useNowTimestamp = null;
 
-  const folderType = ActiveSyncCodepages.FolderHierarchy.Enums.Type;
-  this._folders = [];
-  this.foldersByType = {
-    inbox:  [],
-    sent:   [],
-    drafts: [],
-    trash:  [],
-    normal: []
-  };
-  this.foldersById = {};
-
   this._nextCollectionId = 1;
   this._nextFolderSyncId = 1;
   this._folderSyncStates = {};
 
-  this.addFolder('Inbox', folderType.DefaultInbox);
-  this.addFolder('Sent Mail', folderType.DefaultSent);
-  this.addFolder('Trash', folderType.DefaultDeleted);
+  this.createSystemFolders();
 
   this.logRequest = null;
   this.logResponse = null;
@@ -402,6 +389,32 @@ ActiveSyncServer.prototype = {
      5: 'sent',   // DefaultSent
      6: 'normal', // DefaultOutbox
     12: 'normal', // Mail
+  },
+
+  /**
+   * Create the default system folders (inbox, sent, trash, etc.),
+   * removing existing folders if necessary.
+   *
+   * @param {boolean} opts.underInbox
+   *   If true, create the folders as subfolders of the inbox.
+   */
+  createSystemFolders: function(opts) {
+    const folderType = ActiveSyncCodepages.FolderHierarchy.Enums.Type;
+
+    this._folders = [];
+    this.foldersByType = {
+      inbox:  [],
+      sent:   [],
+      drafts: [],
+      trash:  [],
+      normal: []
+    };
+    this.foldersById = {};
+    var underInbox = opts && opts.underInbox;
+    var inbox = this.addFolder('Inbox', folderType.DefaultInbox);
+    var parentId = (opts && opts.underInbox ? inbox.id : null);
+    this.addFolder('Sent Mail', folderType.DefaultSent, parentId);
+    this.addFolder('Trash', folderType.DefaultDeleted, parentId);
   },
 
   /**
@@ -1247,6 +1260,10 @@ ActiveSyncServer.prototype = {
 
   _backdoor_setDate: function(data) {
     this._useNowTimestamp = data.timestamp;
+  },
+
+  _backdoor_moveSystemFoldersUnderneathInbox: function(data) {
+    this.createSystemFolders({ underInbox: true });
   },
 
   _backdoor_addFolder: function(data) {
