@@ -72,36 +72,10 @@ function imapDaemon(flags, syncFunc) {
 
   this.namespaces = [];
   this.idResponse = "NIL";
-  this.root = new imapMailbox("", null,
-                              {
-                                type : IMAP_NAMESPACE_PERSONAL,
-                                flags: ['\\Noselect']
-                              });
   this.uidvalidity = Math.round(Date.now()/1000);
 
-  this.inbox = new imapMailbox("INBOX", null, this.uidvalidity++);
-  this.root.addMailbox(this.inbox);
-  this.drafts = new imapMailbox("Drafts", null, this.uidvalidity++);
-  this.root.addMailbox(this.drafts);
-  this.sent = new imapMailbox("Sent", null, this.uidvalidity++);
-  this.root.addMailbox(this.sent);
-  this.trash = new imapMailbox("Trash", null, this.uidvalidity++);
-  this.root.addMailbox(this.trash);
-  // Always create a 'Custom' folder that does not have special-use purposes
-  // so that test code can infer that if they know about a 'Custom' folder then
-  // they have synchronized the folder list.  If we only created special folders
-  // then there would be a very real possibility a client might try and create
-  // those folders locally, confusing the unit tests.
-  // NOTE: It's arguable that maybe we should not be doing this in here as a
-  // default and instead should leave it to our initializer.
-  this.customFolder = new imapMailbox("Custom", null, this.uidvalidity++);
-  // And let's mark the folder with a special-use flag that would never be
-  // guessed from the name so we can see when special-use flags are properly
-  // detected.
-  this.customFolder.specialUseFlag = '\\Archive';
-  this.root.addMailbox(this.customFolder);
+  this.createSystemFolders({ underInbox: false });
 
-  this.namespaces.push(this.root);
   this.syncFunc = syncFunc;
   // This can be used to cause the artificial failure of any given command.
   this.commandToFail = "";
@@ -128,6 +102,53 @@ imapDaemon.prototype = {
       return new Date(ts);
     }
     return new Date();
+  },
+
+  /**
+   * Create the default system folders (inbox, sent, trash, etc.),
+   * removing existing folders if necessary.
+   *
+   * @param {boolean} opts.underInbox
+   *   If true, create the folders as subfolders of the inbox.
+   */
+  createSystemFolders: function(opts) {
+    var underInbox = opts && opts.underInbox;
+    var namespace = (underInbox ? "INBOX" : "");
+    this.root = new imapMailbox(namespace, null,
+                                {
+                                  type : IMAP_NAMESPACE_PERSONAL,
+                                  flags: ['\\Noselect']
+                                });
+
+    this.inbox = new imapMailbox("INBOX", null, this.uidvalidity++);
+    this.root.addMailbox(this.inbox);
+
+    var parent = (underInbox ? this.inbox : this.root);
+
+    this.drafts = new imapMailbox("Drafts", parent, this.uidvalidity++);
+    this.drafts.specialUseFlag = '\\Drafts';
+    this.sent = new imapMailbox("Sent", parent, this.uidvalidity++);
+    this.sent.specialUseFlag = '\\Sent';
+    this.trash = new imapMailbox("Trash", parent, this.uidvalidity++);
+    this.trash.specialUseFlag = '\\Trash';
+    parent.addMailbox(this.drafts);
+    parent.addMailbox(this.sent);
+    parent.addMailbox(this.trash);
+
+    // Always create a 'Custom' folder that does not have special-use purposes
+    // so that test code can infer that if they know about a 'Custom' folder then
+    // they have synchronized the folder list.  If we only created special folders
+    // then there would be a very real possibility a client might try and create
+    // those folders locally, confusing the unit tests.
+    // NOTE: It's arguable that maybe we should not be doing this in here as a
+    // default and instead should leave it to our initializer.
+    this.customFolder = new imapMailbox("Custom", parent, this.uidvalidity++);
+    // And let's mark the folder with a special-use flag that would never be
+    // guessed from the name so we can see when special-use flags are properly
+    // detected.
+    this.customFolder.specialUseFlag = '\\Archive';
+    parent.addMailbox(this.customFolder);
+    this.namespaces = [this.root];
   },
 
   synchronize : function (mailbox, update) {
