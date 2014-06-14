@@ -351,6 +351,10 @@ function ActiveSyncServer(options) {
   this._nextFolderSyncId = 1;
   this._folderSyncStates = {};
 
+  // Track all the device id's we have seen so that we can return them when
+  // requested by the control server
+  this._observedDeviceIds = [];
+
   this.addFolder('Inbox', folderType.DefaultInbox);
   this.addFolder('Sent Mail', folderType.DefaultSent);
   this.addFolder('Trash', folderType.DefaultDeleted);
@@ -475,6 +479,12 @@ ActiveSyncServer.prototype = {
             query[decodeURIComponent(param.substring(0, idx))] =
               decodeURIComponent(param.substring(idx + 1));
           }
+        }
+
+        // Log the device id we saw
+        let deviceId = query.DeviceId;
+        if (this._observedDeviceIds.indexOf(deviceId) === -1) {
+          this._observedDeviceIds.push(deviceId);
         }
 
         // XXX: Only try to decode WBXML when the client actually sent WBXML
@@ -1300,4 +1310,12 @@ ActiveSyncServer.prototype = {
       folder.removeMessageById(serverId);
     });
   },
+
+  _backdoor_getObservedDeviceIds: function(data) {
+    var ids = this._observedDeviceIds;
+    if (data.clearObservedDeviceIds) {
+      this._observedDeviceIds = [];
+    }
+    return ids;
+  }
 };
