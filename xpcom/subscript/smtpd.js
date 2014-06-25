@@ -79,6 +79,9 @@ SMTP_RFC2821_handler.prototype = {
   RCPT: function(args) {
     if (this._state == kStateAuthNeeded)
       return "530 5.7.0 Authentication required";
+    if (/invalid/.test(args)) {
+      return "500 bad recipient";
+    }
     return "250 ok";
   },
   DATA: function(args) {
@@ -231,14 +234,19 @@ SMTP_RFC2821_handler.prototype = {
     if (line == ".") {
       if (this.expectingData) {
         this.expectingData = false;
-        try {
-          this._daemon._deliverFunc(this._daemon.post);
+        if (this._daemon._incomingDaemon.sendShouldFail) {
+          return "500 You told me to reject this message.";
+        } else {
+          try {
+            this._daemon._deliverFunc(this._daemon.post);
+          }
+          catch (ex) {
+            return "451 Problem delivering message: " + ex + '    ' +
+            ex.stack.replace(/\n/g, '   ');
+          }
+
+          return "250 Wonderful article, your style is gorgeous!";
         }
-        catch (ex) {
-          return "451 Problem delivering message: " + ex + '    ' +
-                   ex.stack.replace(/\n/g, '   ');
-        }
-        return "250 Wonderful article, your style is gorgeous!";
       }
       return "503 Huch? How did you get here?";
     }
