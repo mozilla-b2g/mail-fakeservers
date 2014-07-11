@@ -560,6 +560,10 @@ console.log('----> responseData:::', responseData);
     return messages;
   },
 
+  _imap_backdoor_moveSystemFoldersUnderneathInbox: function(daemon, req) {
+    daemon.createSystemFolders({ underInbox: true });
+  },
+
   _unified_backdoor_changeCredentials: function(daemon, req, handler) {
     if (req.credentials.username)
       daemon.kUsername = req.credentials.username;
@@ -567,6 +571,10 @@ console.log('----> responseData:::', responseData);
       daemon.kPassword = req.credentials.password;
     if (req.credentials.outgoingPassword)
       daemon.kSmtpPassword = req.credentials.outgoingPassword;
+  },
+
+  _unified_backdoor_toggleSendFailure: function(daemon, req, handler) {
+    daemon.sendShouldFail = req.shouldFail;
   },
 
   _pop3_backdoor_setDropOnAuthFailure: function(daemon, req, handler) {
