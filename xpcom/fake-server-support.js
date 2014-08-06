@@ -240,10 +240,27 @@ function makePOP3Server(creds, opts) {
   };
 }
 
-function makeSMTPServer(receiveType, creds, daemon) {
+/**
+ * @param {'inbox'|'blackhole'} deliverMode
+ *   What should we do with messages that get sent via SMTP?  'inbox' means
+ *   to just put them all in the Inbox.  'never' means to eat them.  In
+ *   the future we could get fancier and route amongst the currently active
+ *   servers based on credentials, etc.  That will probably wait until we
+ *   switch to using hoodiecrow, see https://bugzil.la/1042217
+ */
+function makeSMTPServer(receiveType, creds, deliverMode, daemon) {
   createImapSandbox();
 
+  if (!deliverMode) {
+    deliverMode = 'inbox';
+  }
+
   var smtpDaemon = new imapSandbox.smtpDaemon(function gotMessage(msgStr) {
+    if (deliverMode === 'blackhole') {
+      // oh, what a delicious message I have just eaten!
+      return;
+    }
+
     if (receiveType === 'imap') {
       var imapDaemon = daemon;
       imapDaemon.deliverMessage(msgStr);
@@ -397,6 +414,7 @@ console.log('----> responseData:::', responseData);
       var imapServer = makeIMAPServer(reqObj.credentials, reqObj.options);
       var smtpServer = makeSMTPServer('imap',
                                       reqObj.credentials,
+                                      reqObj.deliverMode,
                                       imapServer.daemon);
 
       console.log('IMAP server started on port', imapServer.port);
@@ -424,6 +442,7 @@ console.log('----> responseData:::', responseData);
       var pop3Server = makePOP3Server(reqObj.credentials, reqObj.options);
       var smtpServer = makeSMTPServer('pop3',
                                       reqObj.credentials,
+                                      reqObj.deliverMode,
                                       pop3Server.daemon);
 
       console.log('POP3 server started on port', pop3Server.port);
