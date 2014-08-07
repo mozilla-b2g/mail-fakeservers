@@ -241,22 +241,22 @@ function makePOP3Server(creds, opts) {
 }
 
 /**
- * @param {'inbox'|'blackhole'} deliverMode
+ * @param {'inbox'|'blackhole'} deliveryMode
  *   What should we do with messages that get sent via SMTP?  'inbox' means
  *   to just put them all in the Inbox.  'never' means to eat them.  In
  *   the future we could get fancier and route amongst the currently active
  *   servers based on credentials, etc.  That will probably wait until we
  *   switch to using hoodiecrow, see https://bugzil.la/1042217
  */
-function makeSMTPServer(receiveType, creds, deliverMode, daemon) {
+function makeSMTPServer(receiveType, creds, deliveryMode, daemon) {
   createImapSandbox();
 
-  if (!deliverMode) {
-    deliverMode = 'inbox';
+  if (!deliveryMode) {
+    deliveryMode = 'inbox';
   }
 
   var smtpDaemon = new imapSandbox.smtpDaemon(function gotMessage(msgStr) {
-    if (deliverMode === 'blackhole') {
+    if (deliveryMode === 'blackhole') {
       // oh, what a delicious message I have just eaten!
       return;
     }
@@ -266,7 +266,7 @@ function makeSMTPServer(receiveType, creds, deliverMode, daemon) {
       imapDaemon.deliverMessage(msgStr);
     } else if (receiveType === 'pop3') {
       var pop3Daemon = daemon;
-      pop3Daemon.setMessages(pop3Daemon._messages.concat([{fileData: msgStr}]));
+      pop3Daemon.addMessages([{fileData: msgStr}]);
     }
   });
 
@@ -286,11 +286,12 @@ function makeSMTPServer(receiveType, creds, deliverMode, daemon) {
   };
 }
 
-function makeActiveSyncServer(creds, logToDump) {
+function makeActiveSyncServer(creds, deliveryMode, logToDump) {
   createActiveSyncSandbox();
   var server = new activesyncSandbox.ActiveSyncServer({
     debug: false,
     creds: creds,
+    deliveryMode: deliveryMode
   });
   server.start(0);
 
@@ -414,7 +415,7 @@ console.log('----> responseData:::', responseData);
       var imapServer = makeIMAPServer(reqObj.credentials, reqObj.options);
       var smtpServer = makeSMTPServer('imap',
                                       reqObj.credentials,
-                                      reqObj.deliverMode,
+                                      reqObj.deliveryMode,
                                       imapServer.daemon);
 
       console.log('IMAP server started on port', imapServer.port);
@@ -442,7 +443,7 @@ console.log('----> responseData:::', responseData);
       var pop3Server = makePOP3Server(reqObj.credentials, reqObj.options);
       var smtpServer = makeSMTPServer('pop3',
                                       reqObj.credentials,
-                                      reqObj.deliverMode,
+                                      reqObj.deliveryMode,
                                       pop3Server.daemon);
 
       console.log('POP3 server started on port', pop3Server.port);
@@ -467,6 +468,7 @@ console.log('----> responseData:::', responseData);
     }
     else if (reqObj.command === 'make_activesync') {
       var serverInfo = makeActiveSyncServer(reqObj.credentials,
+                                            reqObj.deliveryMode,
                                             /* debug: log traffic */ false);
       this.activeSyncServersByPort[serverInfo.port] = serverInfo;
       return {
@@ -612,8 +614,8 @@ console.log('----> responseData:::', responseData);
 
   _pop3_backdoor_addMessagesToFolder: function(pop3Daemon, req, pop3Handler) {
     var existingMessages = pop3Daemon._messages;
-    pop3Daemon.setMessages(
-      existingMessages.concat(req.messages).map(function(msg) {
+    pop3Daemon.addMessages(
+      req.messages.map(function(msg) {
         if (msg.fileData) {
           return msg;
         } else {

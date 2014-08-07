@@ -80,7 +80,7 @@ pop3Daemon.prototype = {
    *     contents will be loaded from the files or 2) objects with a "fileData"
    *     attribute whose value is the content of the file.
    */
-  setMessages: function(messages) {
+  addMessages: function(messages) {
     this._messages = [];
     this._totalMessageSize = 0;
 
