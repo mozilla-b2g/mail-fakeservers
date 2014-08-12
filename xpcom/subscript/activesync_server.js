@@ -336,6 +336,8 @@ function ActiveSyncServer(options) {
   this.creds = options.creds;
   this._useNowTimestamp = null;
 
+  this.deliveryMode = options.deliveryMode || 'inbox';
+
   this._nextCollectionId = 1;
   this._nextFolderSyncId = 1;
   this._folderSyncStates = {};
@@ -1238,8 +1240,10 @@ ActiveSyncServer.prototype = {
     }
 
     message.date = receiveTimestamp;
-    var inboxFolder = this.foldersByType.inbox[0];
-    inboxFolder.addMessage(message);
+    if (this.deliveryMode === 'inbox') {
+      var inboxFolder = this.foldersByType.inbox[0];
+      inboxFolder.addMessage(message);
+    }
 
     return null;
   },
