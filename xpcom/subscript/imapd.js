@@ -123,13 +123,14 @@ imapDaemon.prototype = {
     this.inbox = new imapMailbox("INBOX", null, this.uidvalidity++);
     this.root.addMailbox(this.inbox);
 
-    var parent = (underInbox ? this.inbox : null);
+    var parent = (underInbox ? this.inbox : this.root);
+    var mailboxParent = (underInbox ? this.inbox : null);
 
-    this.drafts = new imapMailbox("Drafts", parent, this.uidvalidity++);
+    this.drafts = new imapMailbox("Drafts", mailboxParent, this.uidvalidity++);
     this.drafts.specialUseFlag = '\\Drafts';
-    this.sent = new imapMailbox("Sent", parent, this.uidvalidity++);
+    this.sent = new imapMailbox("Sent", mailboxParent, this.uidvalidity++);
     this.sent.specialUseFlag = '\\Sent';
-    this.trash = new imapMailbox("Trash", parent, this.uidvalidity++);
+    this.trash = new imapMailbox("Trash", mailboxParent, this.uidvalidity++);
     this.trash.specialUseFlag = '\\Trash';
     parent.addMailbox(this.drafts);
     parent.addMailbox(this.sent);
@@ -142,7 +143,7 @@ imapDaemon.prototype = {
     // those folders locally, confusing the unit tests.
     // NOTE: It's arguable that maybe we should not be doing this in here as a
     // default and instead should leave it to our initializer.
-    this.customFolder = new imapMailbox("Custom", parent, this.uidvalidity++);
+    this.customFolder = new imapMailbox("Custom", mailboxParent, this.uidvalidity++);
     // And let's mark the folder with a special-use flag that would never be
     // guessed from the name so we can see when special-use flags are properly
     // detected.
