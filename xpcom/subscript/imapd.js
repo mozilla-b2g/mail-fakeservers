@@ -123,7 +123,7 @@ imapDaemon.prototype = {
     this.inbox = new imapMailbox("INBOX", null, this.uidvalidity++);
     this.root.addMailbox(this.inbox);
 
-    var parent = (underInbox ? this.inbox : this.root);
+    var parent = (underInbox ? this.inbox : null);
 
     this.drafts = new imapMailbox("Drafts", parent, this.uidvalidity++);
     this.drafts.specialUseFlag = '\\Drafts';
