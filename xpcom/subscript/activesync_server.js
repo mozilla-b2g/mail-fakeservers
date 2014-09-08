@@ -6,6 +6,28 @@ Components.utils.import('resource://gre/modules/NetUtil.jsm');
 Components.utils.import("resource://fakeserver/modules/mimeParser.jsm");
 Components.utils.import("resource://fakeserver/subscript/mime.jsm");
 
+// DOMParser and related XPath shim stuff
+function DOMParser() {
+  var parser = Components.classes["@mozilla.org/xmlextras/domparser;1"]
+        .createInstance(Components.interfaces.nsIDOMParser);
+  parser.init();
+  // XXX we really need to wrap the parser's parser methods in try/catch
+  // blocks because in content space parseFromString does not throw.
+  return parser;
+}
+var XPathResult = {
+    ANY_TYPE: 0,
+    NUMBER_TYPE: 1,
+    STRING_TYPE: 2,
+    BOOLEAN_TYPE: 3,
+    UNORDERED_NODE_ITERATOR_TYPE: 4,
+    ORDERED_NODE_ITERATOR_TYPE: 5,
+    UNORDERED_NODE_SNAPSHOT_TYPE: 6,
+    ORDERED_NODE_SNAPSHOT_TYPE: 7,
+    ANY_UNORDERED_NODE_TYPE: 8,
+    FIRST_ORDERED_NODE_TYPE: 9
+};
+
 /**
  * Encode a WBXML writer's bytes for sending over the network.
  *
@@ -367,6 +389,8 @@ ActiveSyncServer.prototype = {
    * Start the server on a specified port.
    */
   start: function(port) {
+    this.server.registerPathHandler('/autodiscover/autodiscover.xml',
+                                    this._autodiscoverHandler.bind(this));
     this.server.registerPathHandler('/Microsoft-Server-ActiveSync',
                                     this._commandHandler.bind(this));
     this.server.registerPathHandler('/backdoor',
@@ -385,6 +409,113 @@ ActiveSyncServer.prototype = {
       callback = function() {};
     this.server.stop({ onStopped: callback });
   },
+
+  /**
+   * Implement an AutoDiscover interface at /autodiscover/autodiscover.xml that
+   * reports our fake-server as the correct endpoint.
+   *
+   * This is an authenticated endpoint.  We return a 401 if not authenticated.
+   *
+   * @param request the nsIHttpRequest
+   * @param response the nsIHttpResponse
+   */
+  _autodiscoverHandler: function(request, response) {
+    try {
+      var auth = atob(request.getHeader("Authorization")
+                      .replace("Basic ", "")).split(':');
+      if (auth[0].split('@')[0] !== this.creds.username ||
+          auth[1] !== this.creds.password) {
+        response.setStatusLine('1.1', '401', 'Wrong credentials');
+        if (this.logResponse)
+          this.logResponse(request, response, null);
+        return;
+      }
+
+      if (request.method !== 'POST') {
+        response.setStatusLine('1.1', '405', 'Use POST, you bum.');
+        if (this.logResponse)
+          this.logResponse(request, response, null);
+        return;
+      }
+
+      /*
+       The request payload should look like:
+
+        <?xml version="1.0" encoding="utf-8"?>
+        <Autodiscover
+           xmlns="http://schemas.microsoft.com/exchange/autodiscover/mobilesync/requestschema/2006">
+          <Request>
+            <EMailAddress>email@example.com</EMailAddress>
+            <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/mobilesync/responseschema/2006</AcceptableResponseSchema>
+          </Request>
+        </Autodiscover>
+       */
+
+      var xmlstr = stringifyStream(request.bodyInputStream);
+      var doc = new DOMParser().parseFromString(xmlstr, 'text/xml');
+      var elem = doc.documentElement;
+
+      // Badly formed XML will cause us to throw which will end up as a 500
+      // which is enough for our testing purposes to fail.  Obviously a better
+      // server would not throw 500 willy nilly.
+      var emailAddress = elem.querySelector('EMailAddress').textContent;
+      var schema = elem.querySelector('AcceptableResponseSchema').textContent;
+
+      if (!emailAddress.startsWith(this.creds.username)) {
+        response.setStatusLine(
+          '1.1', '406',
+          'Expected email address in XML "' + emailAddress + '" to match ' +
+          'credentials value: ' + this.creds.username);
+        if (this.logResponse)
+          this.logResponse(request, response, null);
+        return;
+      }
+
+      // If they told us a hostname/port, use that in case we are being accessed
+      // via something other than localhost.  Otherwise just run with localhost.
+      var serverHost = request.getHeader('Host');
+      if (serverHost) {
+        serverHost = 'http://' + serverHost;
+      } else {
+        serverHost = 'http://localhost:' + this.server._port;
+      }
+      var serverUrl = serverHost + '/Microsoft-Server-ActiveSync';
+
+      response.setStatusLine('1.1', 200, 'OK');
+      response.setHeader('Content-Type', 'text/xml');
+      var respString =
+      '<?xml version="1.0" encoding="utf-8"?>\n' +
+      '<Autodiscover ' +
+      '  xmlns="http://schemas.microsoft.com/exchange/autodiscover/mobilesync/responseschema/2006">\n' +
+      '  <Response>\n' +
+      '    <Culture>en:us</Culture>\n' +
+      '    <User>\n' +
+      '      <DisplayName>Fake TestName</DisplayName>\n' +
+      '      <EMailAddress>' + emailAddress + '</EMailAddress>\n' +
+      '    </User>\n' +
+      '    <Action>\n' +
+      '      <Settings>\n' +
+      '        <Server>\n' +
+      '          <Type>MobileSync</Type>\n' +
+      '          <Url>' + serverUrl + '</Url>\n' +
+      '          <Name>' + serverUrl + '</Name>\n' +
+      '        </Server>\n' +
+      '      </Settings>\n' +
+      '    </Action>\n' +
+      '  </Response>\n' +
+      '</Autodiscover>\n';
+      response.write(respString);
+      if (this.logResponse)
+        this.logResponse(request, response, respString);
+    } catch(e) {
+      if (this.logResponseError)
+        this.logResponseError(e + '\n' + e.stack);
+      else
+        dump(e + '\n' + e.stack + '\n');
+      throw e;
+    }
+  },
+
 
   // Map folder type numbers from ActiveSync to Gaia's types
   _folderTypes: {

@@ -320,9 +320,13 @@ function makeActiveSyncServer(creds, deliveryMode, logToDump) {
     };
 
     server.logResponse = function(request, response, body) {
-      dump('\x1b[34m<<<\n');
+      dump('\x1b[34m<<< '  + response._httpCode + ': ' +
+           response._httpDescription + '\n');
       if (body) {
-        if (body instanceof activesyncSandbox.WBXML.Writer) {
+        if (typeof(body) === 'string') {
+          dump(body);
+        }
+        else if (body instanceof activesyncSandbox.WBXML.Writer) {
           dump(new activesyncSandbox.WBXML.Reader(
                  body, activesyncSandbox.ActiveSyncCodepages).dump());
         }
