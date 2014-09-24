@@ -632,7 +632,7 @@ StructuredDecoders['content-type'] = function structure_content_type(value) {
   }
   let mediatype = parts[0].toLowerCase();
   let subtype = parts[1].toLowerCase();
-  let type = mediatype + '/' + subtype;
+  type = mediatype + '/' + subtype;
   let structure = {
     'mediatype': mediatype,
     'subtype': subtype,
