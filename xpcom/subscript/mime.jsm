@@ -27,7 +27,9 @@ function convertRfc2822RepToMessageRep(mimestr) {
           cc: headers.has('cc') ? headers.get('cc')[0] : null,
           // ActiveSync is dumb and does not support BCC's
           replyTo: headers.has('reply-to') ? headers.get('reply-to')[0] : null,
-          date: (new Date(headers.get('date')[0])).valueOf(),
+          // we do allow for messages without dates, ugh ugh ugh
+          date: headers.has('date') ?
+            (new Date(headers.get('date')[0])).valueOf() : null,
           subject: headers.get('subject')[0],
           flags: [],
           body: null,
