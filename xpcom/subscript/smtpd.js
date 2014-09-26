@@ -23,7 +23,7 @@ const kStateAuthenticated = 3;
  * If dropOnAuthFailure is set, the server will drop the connection
  * on authentication errors, to simulate servers that do the same.
  */
-function SMTP_RFC2821_handler(daemon) {
+function SMTP_RFC2821_handler(daemon, extensions) {
   this._daemon = daemon;
   this.closing = false;
   this.dropOnAuthFailure = false;
@@ -32,6 +32,10 @@ function SMTP_RFC2821_handler(daemon) {
   this._kAuthSchemeStartFunction["CRAM-MD5"] = this.authCRAMStart;
   this._kAuthSchemeStartFunction["PLAIN"] = this.authPLAINStart;
   this._kAuthSchemeStartFunction["LOGIN"] = this.authLOGINStart;
+  if (extensions && extensions.indexOf("XOAUTH2") !== -1) {
+    this.kAuthSchemes.push("XOAUTH2");
+    this._kAuthSchemeStartFunction["XOAUTH2"] = this.authXOAUTH2;
+  }
 
   this.resetTest();
 }
@@ -146,6 +150,34 @@ SMTP_RFC2821_handler.prototype = {
         this.closing = true;
       return "535 5.7.8 Wrong username or password, crook!";
     }
+  },
+
+  authXOAUTH2 : function (lineRest)
+  {
+    var payload = atob(lineRest);
+    var match =
+          /user=([^\x01]+)\x01auth=Bearer ([^\x01]+)\x01\x01/.exec(payload);
+    var username = match && match[1];
+    var accessToken = match && match[2];
+    var incomingDaemon = this._daemon._incomingDaemon;
+    if (!match || incomingDaemon.kAccessTokens.indexOf(accessToken) === -1) {
+      var errPayload = {
+        status: 401,
+        schemes: 'bearer',
+        scope: 'mail'
+      };
+      this._multiline = true;
+      this._nextAuthFunction = function() {
+        return '535 5.7.1 ' + match ?
+          ('bad auth, wanted one of: ' + incomingDaemon.kAccessTokens +
+           ' but got ' + accessToken + ' from ' + payload) :
+          'malformed payload';
+      };
+      return "334 " + btoa(JSON.stringify(errPayload));
+    }
+
+    this._state = IMAP_STATE_AUTHED;
+    return "235 2.7.0 Accepted ";
   },
 
   authCRAMStart : function (lineRest)

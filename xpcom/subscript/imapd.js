@@ -2450,6 +2450,39 @@ var IMAP_RFC2195_extension = {
   },
 };
 
+var IMAP_XOAUTH2_extension = {
+  kAuthSchemes : [ "XOAUTH2" ],
+
+  preload: function (handler) {
+    handler._kAuthSchemeStartFunction["XOAUTH2"] = this.authXOAUTH2;
+  },
+
+  authXOAUTH2: function (lineRest)
+  {
+    var payload = atob(lineRest);
+    var match =
+          /user=([^\x01]+)\x01auth=Bearer ([^\x01]+)\x01\x01/.exec(payload);
+    var username = match && match[1];
+    var accessToken = match && match[2];
+    if (!match || this._daemon.kAccessTokens.indexOf(accessToken) === -1) {
+      var errPayload = {
+        status: 401,
+        schemes: 'bearer',
+        scope: 'mail'
+      };
+      this._multiline = true;
+      this._nextAuthFunction = function() {
+        return 'NO ' + match ? 'bad auth' : 'malformed payload';
+      };
+      return "+ " + btoa(JSON.stringify(errPayload));
+    }
+
+    this._state = IMAP_STATE_AUTHED;
+    return "OK XOAUTH2 is awesome";
+  },
+};
+
+
 // FETCH BODYSTRUCTURE
 function bodystructure(msg, extension) {
   if (!msg || msg == "")
