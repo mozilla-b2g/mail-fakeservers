@@ -91,7 +91,7 @@ function makeSandbox(name) {
       wantXHRConstructor: false
     });
   // provide some globals our subscripts love...
-  sandbox.atob = atob
+  sandbox.atob = atob;
   sandbox.btoa = btoa;
   sandbox.TextEncoder = TextEncoder;
   sandbox.TextDecoder = TextDecoder;
@@ -138,6 +138,17 @@ function createImapSandbox() {
   loadInSandbox(baseFakeserver, ['subscript', 'smtpd.js'], imapSandbox);
 }
 
+
+var oauthSandbox = null;
+function createOAuthSandbox() {
+  if (oauthSandbox)
+    return;
+
+  oauthSandbox = makeSandbox('oauth-fakeserver');
+  loadInSandbox(baseFakeserver, ['subscript', 'oauth_server.js'], oauthSandbox);
+}
+
+
 var activesyncSandbox = null;
 var baseActiveSync = ['resource:/', 'activesync'];
 var codepages = ['AirSyncBase.js', 'AirSync.js', 'Calendar.js', 'Common.js',
@@ -173,6 +184,28 @@ function createActiveSyncSandbox() {
                 activesyncSandbox);
 }
 
+
+function makeOAuthServer(opts) {
+  createOAuthSandbox();
+  var server = new oauthSandbox.OAuthServer({
+    debug: false,
+    issueTokens: opts.issueTokens
+  });
+  server.start(0);
+
+  var httpServer = server.server;
+  var port = httpServer._socket.port;
+  httpServer._port = port;
+  // it had created the identity on port 0, which is not helpful to anyone
+  httpServer._identity._initialize(port, httpServer._host, true);
+
+
+  return {
+    server: server,
+    port: port
+  };
+}
+
 /**
  * Synchronously create a fake IMAP server operating on an available port.  The
  * IMAP server only services a single fake account.
@@ -186,6 +219,9 @@ function makeIMAPServer(creds, opts) {
   daemon.kUsername = creds.username;
   daemon.kPassword = creds.password;
   daemon.kSmtpPassword = creds.outgoingPassword;
+  if (opts.oauth) {
+    daemon.kAccessTokens = opts.oauth.acceptTokens;
+  }
 
   function createHandler(d) {
     var handler = new imapSandbox.IMAP_RFC3501_handler(d);
@@ -248,7 +284,7 @@ function makePOP3Server(creds, opts) {
  *   servers based on credentials, etc.  That will probably wait until we
  *   switch to using hoodiecrow, see https://bugzil.la/1042217
  */
-function makeSMTPServer(receiveType, creds, deliveryMode, daemon) {
+function makeSMTPServer(receiveType, creds, deliveryMode, extensions, daemon) {
   createImapSandbox();
 
   if (!deliveryMode) {
@@ -271,7 +307,7 @@ function makeSMTPServer(receiveType, creds, deliveryMode, daemon) {
   });
 
   function createHandler(d) {
-    return new imapSandbox.SMTP_RFC2821_handler(d);
+    return new imapSandbox.SMTP_RFC2821_handler(d, extensions);
   }
 
   smtpDaemon._incomingDaemon = daemon;
@@ -420,7 +456,12 @@ console.log('----> responseData:::', responseData);
       var smtpServer = makeSMTPServer('imap',
                                       reqObj.credentials,
                                       reqObj.deliveryMode,
+                                      reqObj.options.smtpExtensions,
                                       imapServer.daemon);
+      var oauthServer = null;
+      if (reqObj.options.oauth) {
+        oauthServer = makeOAuthServer(reqObj.options.oauth);
+      }
 
       console.log('IMAP server started on port', imapServer.port);
       console.log('SMTP server started on port', smtpServer.port);
@@ -429,7 +470,8 @@ console.log('----> responseData:::', responseData);
       var pairInfo = this.imapServerPairsByPort[imapServer.port] = {
         relPath: relPath,
         imap: imapServer,
-        smtp: smtpServer
+        smtp: smtpServer,
+        oauth: oauthServer
       };
 
       this._bindJsonHandler(relPath, pairInfo, this._handleImapBackdoor);
@@ -440,21 +482,33 @@ console.log('----> responseData:::', responseData);
         imapPort: imapServer.port,
         smtpHost: 'localhost',
         smtpPort: smtpServer.port,
+        // ugh, when we move to node-centric this all needs to be made much
+        // cleaner...
+        oauthInfo: !oauthServer ? null :
+          {
+            authEndpoint:
+              'http://localhost:' + oauthServer.port + '/o/oauth2/auth',
+            tokenEndpoint:
+              'http://localhost:' + oauthServer.port + '/o/oauth2/token',
+            backdoor:
+              'http://localhost:' + oauthServer.port + '/backdoor'
+          }
       };
     }
     else if (reqObj.command === 'make_pop3_and_smtp') {
       // credentials should be { username, password }
       var pop3Server = makePOP3Server(reqObj.credentials, reqObj.options);
-      var smtpServer = makeSMTPServer('pop3',
+          smtpServer = makeSMTPServer('pop3',
                                       reqObj.credentials,
                                       reqObj.deliveryMode,
+                                      reqObj.options.smtpExtensions,
                                       pop3Server.daemon);
 
       console.log('POP3 server started on port', pop3Server.port);
       console.log('SMTP server started on port', smtpServer.port);
 
-      var relPath = '/pop3-' + pop3Server.port;
-      var pairInfo = this.pop3ServerPairsByPort[pop3Server.port] = {
+      relPath = '/pop3-' + pop3Server.port;
+      pairInfo = this.pop3ServerPairsByPort[pop3Server.port] = {
         relPath: relPath,
         pop3: pop3Server,
         smtp: smtpServer
@@ -589,6 +643,10 @@ console.log('----> responseData:::', responseData);
     daemon.createSystemFolders({ underInbox: true });
   },
 
+  _imap_backdoor_setValidOAuthAccessTokens: function(daemon, req, handler) {
+    daemon.kAccessTokens = req.accessTokens;
+  },
+
   _unified_backdoor_changeCredentials: function(daemon, req, handler) {
     if (req.credentials.username)
       daemon.kUsername = req.credentials.username;
@@ -626,7 +684,7 @@ console.log('----> responseData:::', responseData);
           return {fileData: msg.msgString};
         }
     }));
-    // return the total number of messages in the folder now
+    // return the total number of messages in thep folder now
     return pop3Daemon._messages.length;
   },
 
@@ -646,6 +704,15 @@ console.log('----> responseData:::', responseData);
       }
       catch (ex) {
         console.warn('Problem shutting down SMTP server on port',
+                     servers.smtp.port, '-', ex, '\n', ex.stack);
+      }
+      try {
+        if (servers.oauth) {
+          servers.oauth.server.stop();
+        }
+      }
+      catch (ex) {
+        console.warn('Problem shutting down OAuth server on port',
                      servers.smtp.port, '-', ex, '\n', ex.stack);
       }
     }
