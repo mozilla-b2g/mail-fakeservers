@@ -643,7 +643,9 @@ ActiveSyncServer.prototype = {
         if (wbxmlResponse) {
           response.setStatusLine('1.1', wbxmlResponse.statusCode || 200, 'OK');
           response.setHeader('Content-Type', 'application/vnd.ms-sync.wbxml');
-          response.write(encodeWBXML(wbxmlResponse));
+          if ('bytes' in wbxmlResponse) {
+            response.write(encodeWBXML(wbxmlResponse));
+          }
           if (this.logResponse)
             this.logResponse(request, response, wbxmlResponse);
         }
@@ -1376,7 +1378,7 @@ ActiveSyncServer.prototype = {
       inboxFolder.addMessage(message);
     }
 
-    return null;
+    return { statusCode: 200 };
   },
 
   _backdoorHandler: function(request, response) {

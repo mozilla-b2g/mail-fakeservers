@@ -374,7 +374,8 @@ function makeActiveSyncServer(creds, deliveryMode, logToDump) {
     };
 
     server.logResponseError = function(err) {
-      dump("ERR " + err + '\n\n');
+      dump("\x1b[31m!!! ERR " + err + '\n\n');
+      dump('\x1b[0m\n');
     };
   }
 
@@ -527,7 +528,7 @@ console.log('----> responseData:::', responseData);
     else if (reqObj.command === 'make_activesync') {
       var serverInfo = makeActiveSyncServer(reqObj.credentials,
                                             reqObj.deliveryMode,
-                                            /* debug: log traffic */ false);
+                                            reqObj.debug || false);
       this.activeSyncServersByPort[serverInfo.port] = serverInfo;
       return {
         // the control URL is also the ActiveSync server
