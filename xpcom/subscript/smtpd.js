@@ -37,6 +37,8 @@ function SMTP_RFC2821_handler(daemon, extensions) {
     this._kAuthSchemeStartFunction["XOAUTH2"] = this.authXOAUTH2;
   }
 
+  this._gotUnpairedLF = false;
+
   this.resetTest();
 }
 SMTP_RFC2821_handler.prototype = {
@@ -46,6 +48,11 @@ SMTP_RFC2821_handler.prototype = {
   kAuthSchemes : [ "CRAM-MD5", "PLAIN", "LOGIN" ],
   kCapabilities : [ "8BITMIME", "SIZE" ],
   _nextAuthFunction : undefined,
+
+  _handleUnpairedLF : function(line) {
+    if (!this._gotUnpairedLF)
+      this._gotUnpairedLF = line;
+  },
 
   resetTest : function() {
     this._state = this.kAuthRequired ? kStateAuthNeeded : kStateAuthOptional;
@@ -262,6 +269,11 @@ SMTP_RFC2821_handler.prototype = {
       try {
         return func.call(this, line);
       } catch (e) { return "451 " + e; }
+    }
+    if (this._gotUnpairedLF) {
+      this._multiline = false;
+      return "451 Got unpaired LF: " +
+               this._gotUnpairedLF.replace(/\n/g, '\\n');
     }
     if (line == ".") {
       if (this.expectingData) {

@@ -365,6 +365,16 @@ nsMailReader.prototype = {
     var line = String.fromCharCode.apply(null, buf.slice(0, crlfLoc));
     this._buffer = buf.slice(crlfLoc + 2);
     this._lines.push(line);
+    // Look if there were any \n's in there that weren't preceded by an \r.
+    // (Which will be any \n we find!)
+    var idxUnpaired = line.indexOf('\n');
+    if (idxUnpaired !== -1) {
+      // Okay, the handler needs to care, for example smtpd wants to get super
+      // upset at this (and does).
+      if (this._handler._handleUnpairedLF) {
+        this._handler._handleUnpairedLF(line);
+      }
+    }
     this._findLines();
   },
 
