@@ -1,6 +1,6 @@
 {
   "name": "mail-fakeservers",
-  "version": "0.0.32",
+  "version": "0.0.33",
   "description": "fake imap/pop3/smtp servers from comm-central",
   "main": "index.js",
   "scripts": {
