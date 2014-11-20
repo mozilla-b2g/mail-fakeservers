@@ -52,17 +52,19 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep',
 // from (node-imap) imap.js
 // XXX we could probably use toLocaleFormat instead, although I'm worried about
 // running the tests under other (native) locales.
-function formatImapDateTime(date) {
+function formatImapDateTime(date, quirks) {
   var s;
   s = ((date.getDate() < 10) ? ' ' : '') + date.getDate() + '-' +
        MONTHS[date.getMonth()] + '-' +
        date.getFullYear() + ' ' +
        ('0'+date.getHours()).slice(-2) + ':' +
        ('0'+date.getMinutes()).slice(-2) + ':' +
-       ('0'+date.getSeconds()).slice(-2) +
-       ((date.getTimezoneOffset() > 0) ? ' -' : ' +' ) +
-       ('0'+(Math.abs(date.getTimezoneOffset()) / 60)).slice(-2) +
-       ('0'+(Math.abs(date.getTimezoneOffset()) % 60)).slice(-2);
+       ('0'+date.getSeconds()).slice(-2);
+  if (!quirks || !quirks.noInternalDateTimeZone) {
+    s += ((date.getTimezoneOffset() > 0) ? ' -' : ' +' ) +
+         ('0'+(Math.abs(date.getTimezoneOffset()) / 60)).slice(-2) +
+         ('0'+(Math.abs(date.getTimezoneOffset()) % 60)).slice(-2);
+  }
   return s;
 }
 
@@ -829,6 +831,7 @@ function IMAP_RFC3501_handler(daemon) {
   };
 
   this._selectDisabledReports = {};
+  this._fetchQuirks = {};
 
   this.resetTest();
 }
@@ -1772,7 +1775,7 @@ IMAP_RFC3501_handler.prototype = {
   },
   _FETCH_INTERNALDATE : function (message) {
     var response = "INTERNALDATE \"";
-    response += formatImapDateTime(message.date);
+    response += formatImapDateTime(message.date, this._fetchQuirks);
     response += "\"";
     return response;
   },
@@ -2492,6 +2495,12 @@ var IMAP_XOAUTH2_extension = {
 var IMAP_NOUIDNEXT_extension = {
   preload: function(handler) {
     handler._selectDisabledReports.UIDNEXT = true;
+  },
+};
+
+var IMAP_NO_INTERNALDATE_TZ_extension = {
+  preload: function(handler) {
+    handler._fetchQuirks.noInternalDateTimeZone = true;
   },
 };
 
