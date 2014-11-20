@@ -1368,6 +1368,8 @@ ActiveSyncServer.prototype = {
       // this wants a unique-ish id...
       sentMessage.id += '-sent';
       sentMessage.date = receiveTimestamp;
+      // Sent messages are read.
+      sentMessage.flags = ['read'];
       var sentFolder = this.foldersByType.sent[0];
       sentFolder.addMessage(sentMessage);
     }
