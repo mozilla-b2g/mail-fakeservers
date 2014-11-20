@@ -828,6 +828,8 @@ function IMAP_RFC3501_handler(daemon) {
     UID : ["atom", "..."]
   };
 
+  this._selectDisabledReports = {};
+
   this.resetTest();
 }
 IMAP_RFC3501_handler.prototype = {
@@ -1097,7 +1099,8 @@ IMAP_RFC3501_handler.prototype = {
       }
     }
     response += "* OK [PERMANENTFLAGS (" + box.permflags.join(" ") + ")]\0";
-    response += "* OK [UIDNEXT " + box.uidnext + "]\0";
+    if (!this._selectDisabledReports.UIDNEXT)
+      response += "* OK [UIDNEXT " + box.uidnext + "]\0";
     response += "* OK [UIDVALIDITY " + box.uidvalidity + "]\0";
     return response + "OK [READ-WRITE] SELECT completed";
   },
@@ -1125,7 +1128,8 @@ IMAP_RFC3501_handler.prototype = {
       }
     }
     response += "* OK [PERMANENTFLAGS (" + box.permflags.join(" ") + ")]\0";
-    response += "* OK [UIDNEXT " + box.uidnext + "]\0";
+    if (!this._selectDisabledReports.UIDNEXT)
+      response += "* OK [UIDNEXT " + box.uidnext + "]\0";
     response += "* OK [UIDVALIDITY " + box.uidvalidity + "]\0";
     return response + "OK [READ-ONLY] EXAMINE completed";
   },
@@ -2479,6 +2483,15 @@ var IMAP_XOAUTH2_extension = {
 
     this._state = IMAP_STATE_AUTHED;
     return "OK XOAUTH2 is awesome";
+  },
+};
+
+/**
+ * Don't return UIDNEXT when selecting/examining a folder.
+ */
+var IMAP_NOUIDNEXT_extension = {
+  preload: function(handler) {
+    handler._selectDisabledReports.UIDNEXT = true;
   },
 };
 
