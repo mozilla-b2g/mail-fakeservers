@@ -68,15 +68,15 @@ function formatImapDateTime(date, quirks) {
   return s;
 }
 
-function imapDaemon(flags, syncFunc) {
-  this._flags = flags;
+function imapDaemon(opts, syncFunc) {
+  this._flags = 0; // deprecated/abandoned integer option flags
   this._useNowTimestamp = null;
 
   this.namespaces = [];
   this.idResponse = "NIL";
   this.uidvalidity = Math.round(Date.now()/1000);
 
-  this.createSystemFolders({ underInbox: false });
+  this.createSystemFolders(opts.folderConfig || { underInbox: false });
 
   this.syncFunc = syncFunc;
   // This can be used to cause the artificial failure of any given command.
@@ -94,7 +94,8 @@ function imapDaemon(flags, syncFunc) {
   // (negative) UTC we are.  As such, if you want to transform an IMAP date,
   // from UTC midnight on the given date to your local midnight, you add this
   // offset to the UTC timestamp.
-  this.tzOffsetMillis = new Date().getTimezoneOffset() * 60000;
+  this.tzOffsetMillis = ((opts.useTimezoneMins != null) ?
+    opts.useTimezoneMins : (new Date().getTimezoneOffset())) * 60000;
 }
 imapDaemon.prototype = {
   _makeNowDate: function() {
@@ -110,48 +111,61 @@ imapDaemon.prototype = {
    * Create the default system folders (inbox, sent, trash, etc.),
    * removing existing folders if necessary.
    *
-   * @param {boolean} opts.underInbox
+   * @param {boolean} folderConfig.underInbox
    *   If true, create the folders as subfolders of the inbox.
+   * @param {Object[]} [folderConfig.folders]
+   *   An array of objects of the form { name, specialUseFlag } to be created.
+   *   If unspecified, the default folders will be used.  (Current Drafts, Sent,
+   *   Trash, and custom.)
    */
-  createSystemFolders: function(opts) {
-    var underInbox = opts && opts.underInbox;
+  createSystemFolders: function(folderConfig) {
+    var underInbox = folderConfig && folderConfig.underInbox;
     var namespace = (underInbox ? "INBOX" : "");
+    // always create the personal namespace
     this.root = new imapMailbox(namespace, null,
                                 {
                                   type : IMAP_NAMESPACE_PERSONAL,
                                   flags: ['\\Noselect']
                                 });
-
+    // and inbox
     this.inbox = new imapMailbox("INBOX", null, this.uidvalidity++);
     this.root.addMailbox(this.inbox);
-
-    var parent = (underInbox ? this.inbox : this.root);
-    var mailboxParent = (underInbox ? this.inbox : null);
-
-    this.drafts = new imapMailbox("Drafts", mailboxParent, this.uidvalidity++);
-    this.drafts.specialUseFlag = '\\Drafts';
-    this.sent = new imapMailbox("Sent", mailboxParent, this.uidvalidity++);
-    this.sent.specialUseFlag = '\\Sent';
-    this.trash = new imapMailbox("Trash", mailboxParent, this.uidvalidity++);
-    this.trash.specialUseFlag = '\\Trash';
-    parent.addMailbox(this.drafts);
-    parent.addMailbox(this.sent);
-    parent.addMailbox(this.trash);
-
-    // Always create a 'Custom' folder that does not have special-use purposes
-    // so that test code can infer that if they know about a 'Custom' folder then
-    // they have synchronized the folder list.  If we only created special folders
-    // then there would be a very real possibility a client might try and create
-    // those folders locally, confusing the unit tests.
-    // NOTE: It's arguable that maybe we should not be doing this in here as a
-    // default and instead should leave it to our initializer.
-    this.customFolder = new imapMailbox("Custom", mailboxParent, this.uidvalidity++);
-    // And let's mark the folder with a special-use flag that would never be
-    // guessed from the name so we can see when special-use flags are properly
-    // detected.
-    this.customFolder.specialUseFlag = '\\Archive';
-    parent.addMailbox(this.customFolder);
     this.namespaces = [this.root];
+
+    var pathPrefix = (underInbox ? (namespace + this.root.delimiter) : '');
+
+    // If an explicit list of folders is not specified, use the defaults we've
+    // always had (or added without badly regressing things in the case of
+    // "Custom" ;)
+    var createFolders = folderConfig.folders;
+    if (!createFolders) {
+      createFolders = [
+        { name: pathPrefix + 'Drafts', specialUseFlag: '\\Drafts' },
+        { name: pathPrefix + 'Sent', specialUseFlag: '\\Sent' },
+        { name: pathPrefix + 'Trash', specialUseFlag: '\\Trash' },
+        // Always create a 'Custom' folder that does not have special-use
+        // purposes so that test code can infer that if they know about a
+        // 'Custom' folder then they have synchronized the folder list.  If we
+        // only created special folders then there would be a very real
+        // possibility a client might try and create those folders locally,
+        // confusing the unit tests.  NOTE: It's arguable that maybe we should
+        // not be doing this in here as a default and instead should leave it to
+        // our initializer.
+        //
+        // And let's mark the folder with a special-use flag that would never be
+        // guessed from the name so we can see when special-use flags are
+        // properly detected.
+        { name: pathPrefix + 'Custom', specialUseFlag: '\\Archive' }
+      ];
+    }
+
+    createFolders.forEach(function(folderDef) {
+      var box = this.createMailbox(folderDef.name);
+      if (box.specialUseFlag) {
+        box.specialUseFlag = folderDef.specialUseFlag;
+      }
+    }.bind(this));
+
   },
 
   synchronize : function (mailbox, update) {
@@ -249,6 +263,7 @@ imapDaemon.prototype = {
         this.root.addMailbox(this.inbox);
       }
       oldBox.name = subName;
+      return newBox;
     } else if (oldBox) {
       // oldBox is a regular {} object, so it contains mailbox data but is not
       // a mailbox itself. Pass it into the constructor and let that deal with
@@ -267,8 +282,8 @@ imapDaemon.prototype = {
         { flags : creatable ? [] : ['\\NoInferiors'],
           uidvalidity : this.uidvalidity++ });
       box.addMailbox(childBox);
+      return childBox;
     }
-    return true;
   },
   deleteMailbox : function (mailbox) {
     if (mailbox._children.length == 0) {
@@ -1138,7 +1153,7 @@ IMAP_RFC3501_handler.prototype = {
   },
   CREATE : function (args) {
     if (this._daemon.getMailbox(args[0]))
-      return "NO mailbox already exists";
+      return "NO [ALREADYEXISTS] mailbox already exists";
     if (!this._daemon.createMailbox(args[0]))
       return "NO cannot create mailbox";
     return "OK CREATE completed";
