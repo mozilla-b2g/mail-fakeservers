@@ -215,7 +215,7 @@ function makeIMAPServer(creds, opts) {
 
   var imapExtensions = (opts && opts.imapExtensions) || ['RFC2195'];
 
-  var daemon = new imapSandbox.imapDaemon(0);
+  var daemon = new imapSandbox.imapDaemon(opts || {}, null);
   daemon.kUsername = creds.username;
   daemon.kPassword = creds.password;
   daemon.kSmtpPassword = creds.outgoingPassword;
