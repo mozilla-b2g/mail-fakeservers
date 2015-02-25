@@ -1574,8 +1574,14 @@ IMAP_RFC3501_handler.prototype = {
     if (this._lastCommand == reader.watchWord)
       reader.stopTest();
   },
-  onServerFault : function () {
-    return ("_tag" in this ? this._tag : '*') + ' BAD Internal server fault.';
+  onServerFault : function (e) {
+    var message;
+    if (/^BAD /.test(e.message)) {
+      message = e.message;
+    } else {
+      message = 'BAD Internal server fault.';
+    }
+    return ("_tag" in this ? this._tag : '*') + ' ' + message;
   },
 
   ////////////////////////////////////
@@ -1634,7 +1640,11 @@ IMAP_RFC3501_handler.prototype = {
     set = [];
     for each (var part in elements) {
       if (!part.contains(':')) {
-        set.push(part2num(part));
+        let num = part2num(part);
+        if (num <= 0) {
+          throw new Error('BAD Message sequence numbers/UIDs must be >= 0');
+        }
+        set.push(num);
       } else {
         var range = part.split(/:/);
         range[0] = part2num(range[0]);
@@ -1643,6 +1653,9 @@ IMAP_RFC3501_handler.prototype = {
           let temp = range[1];
           range[1] = range[0];
           range[0] = temp;
+        }
+        if (range[0] <= 0) {
+          throw new Error('BAD Message sequence numbers/UIDs must be >= 0');
         }
         for (let i = range[0]; i <= range[1]; i++)
           set.push(i);
