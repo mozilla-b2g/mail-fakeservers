@@ -13,11 +13,11 @@
   "author": "",
   "license": "Apache2",
   "devDependencies": {
+    "sockit-to-me": "0.2.2",
     "mocha": "~1.12.0"
   },
   "dependencies": {
     "json-wire-protocol": "~0.2.1",
-    "sockit-to-me": "0.2.2",
     "debug": "~0.7.2"
   }
 }
