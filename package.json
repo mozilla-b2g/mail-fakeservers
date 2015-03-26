@@ -16,8 +16,11 @@
     "mocha": "~1.12.0"
   },
   "dependencies": {
+    "debug": "~0.7.2",
+    "hoodiecrow": "andris9/hoodiecrow#162647b4",
     "json-wire-protocol": "~0.2.1",
-    "sockit-to-me": "0.2.2",
-    "debug": "~0.7.2"
+    "request": "^2.53.0",
+    "simplesmtp": "^0.3.35",
+    "sockit-to-me": "0.2.2"
   }
 }

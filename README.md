@@ -4,9 +4,18 @@ They are used by both:
 - the mozilla/gaia-email-libs-and-more repo for its (back-end) tests.
 - the mozilla/gaia/apps/email JS integration tests.
 
-The servers all need to run in a Gecko/Spidermonkey context, but how that is
-accomplished varies by who is running them.  They are always communicated with
-via HTTP.
+NOTE: At the moment, this allows you to run two IMAP fake-server
+implementations: one gecko-based server (imapd.js, from Thunderbird), and now,
+additionally, a node-based IMAP fakeserver called
+[hoodiecrow](https://github.com/andris9/hoodiecrow). For legacy reasons, both
+are currently included; hoodiecrow is used by the GELAM unit tests, but imapd.js
+is used by everything else.
+
+The rest of this README references the original IMAP gecko-based fake server.
+
+Most servers (except Hoodiecrow) need to run in a Gecko/Spidermonkey context,
+but how that is accomplished varies by who is running them.  They are always
+communicated with via HTTP.
 
 - GELAM: The entire test infrastructure is run inside a b2g-desktop instance
   using xulrunner app mode.  Its API to us (mail-fakeservers) is directly via

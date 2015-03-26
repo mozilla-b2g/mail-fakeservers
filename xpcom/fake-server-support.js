@@ -206,9 +206,70 @@ function makeOAuthServer(opts) {
   };
 }
 
+
+
+var _nextHoodiecrowId = 0;
+
 /**
- * Synchronously create a fake IMAP server operating on an available port.  The
- * IMAP server only services a single fake account.
+ * Start booting up a hoodiecrow node-based fakeserver. This is an asynchronous
+ * process, which goes like this:
+ *
+ * 1. The control server (us!) boots up a node instance.
+ * 2. The node instance boots up hoodiecrow.
+ * 3. The node instance pings the control server when ready.
+ *
+ * If you try to call this function directly, you'll need to address the
+ * handshake; this assumes it is being handled by a control server.
+ */
+function startHoodiecrowServer(controlServer, creds, opts, deliveryMode) {
+
+  // Figure out where we can find 'run_hoodiecrow.js', a node-style file.
+  var FileUtils = Cu.import("resource://gre/modules/FileUtils.jsm").FileUtils;
+  let cwd = Cc["@mozilla.org/file/directory_service;1"]
+    .getService(Components.interfaces.nsIProperties)
+    .get("CurWorkD", Components.interfaces.nsILocalFile);
+
+  // Are we in mail-fakeservers itself or as an installed node module?
+  var file = cwd.clone();
+  if (file.leafName !== 'mail-fakeservers') {
+    file.append('node_modules');
+    file.append('mail-fakeservers');
+  }
+  file.append('run_hoodiecrow.js');
+
+  var serverId = _nextHoodiecrowId++;
+
+  var process = Cc["@mozilla.org/process/util;1"]
+    .createInstance(Components.interfaces.nsIProcess);
+
+  var observer = {
+    observe: function(subject, topic, data) {
+      console.warn('Hoodiecrow process exited!', subject, topic, data);
+    }
+  };
+
+  // These arguments get passed as argv entries to node.
+  var jsonArgs = {
+    serverId: serverId,
+    controlUrl: controlServer.baseUrl + '/control',
+    credentials: creds,
+    options: opts,
+    deliveryMode: deliveryMode
+  };
+
+  console.log('Booting up new hoodiecrow node process:', file.path);
+
+  // Use "/usr/bin/env" to locate the correct `node` binary.
+  process.init(new FileUtils.File('/usr/bin/env'));
+  var args = ['node', file.path, JSON.stringify(jsonArgs)];
+  process.runAsync(args, args.length, observer, /* holdWeak: */ false);
+
+  return { serverId: serverId, process: process };
+}
+
+/**
+ * Synchronously create a fake old-style Thunderbird IMAP server operating on an
+ * available port.  The IMAP server only services a single fake account.
  */
 function makeIMAPServer(creds, opts) {
   createImapSandbox();
@@ -414,9 +475,8 @@ function stringifyStream(stream) {
  */
 function ControlServer() {
   // maps IMAP port to an object with a coupled IMAP and SMTP server
-  this.imapServerPairsByPort = Object.create(null);
-  this.pop3ServerPairsByPort = Object.create(null);
-  this.activeSyncServersByPort = Object.create(null);
+  this.killServerCallbacks = [];
+  this.pendingHoodiecrowResponsesById = {};
 
   this._httpServer = new HttpServer();
   this._bindJsonHandler('/control', null, this._handleControl);
@@ -436,11 +496,14 @@ ControlServer.prototype = {
       try {
         var postData = JSON.parse(stringifyStream(request.bodyInputStream));
 console.log('<---- request:::', postData.command);
-        var responseData = funcOnThis.call(self, data, postData);
-        response.setStatusLine('1.1', 200, 'OK');
-console.log('----> responseData:::', responseData);
-        if (responseData)
-          response.write(JSON.stringify(responseData));
+        var responseData = funcOnThis.call(self, data, postData, response);
+        if (!response._processAsync) {
+          response.setStatusLine('1.1', 200, 'OK');
+          console.log('----> responseData:::', responseData);
+          if (responseData) {
+            response.write(JSON.stringify(responseData));
+          }
+        }
       }
       catch (ex) {
         console.error('Problem in control server for path', path, '-',
@@ -450,8 +513,79 @@ console.log('----> responseData:::', responseData);
 
   },
 
-  _handleControl: function(_unusedData, reqObj) {
-    if (reqObj.command === 'make_imap_and_smtp') {
+  _handleControl: function(_unusedData, reqObj, response) {
+    var oauthServer = null;
+
+    if ((reqObj.command === 'make_hoodiecrow' ||
+         reqObj.command === 'make_imap_and_smtp') && reqObj.options.oauth) {
+      oauthServer = makeOAuthServer(reqObj.options.oauth);
+      this.killServerCallbacks.push(function() {
+        oauthServer && oauthServer.server.stop();
+      });
+    }
+
+    function mergeOauthInfo(obj) {
+      if (oauthServer) {
+        obj.oauthInfo = {
+          authEndpoint:
+            'http://localhost:' + oauthServer.port + '/o/oauth2/auth',
+          tokenEndpoint:
+            'http://localhost:' + oauthServer.port + '/o/oauth2/token',
+          backdoor:
+            'http://localhost:' + oauthServer.port + '/backdoor'
+        };
+      }
+      return obj;
+    }
+
+    if (reqObj.command === 'make_hoodiecrow') {
+      // Hoodiecrow (the new node-based Fake IMAP server) needs to start up
+      // asynchronously because it's in Node. Boot up a node process here, and
+      // it will notify us with a 'hoodiecrow_ready' message, at which point we
+      // can actually respond to _this_ request.
+
+      // Boot up the server.
+      var { serverId, process } = startHoodiecrowServer(
+        this,
+        reqObj.credentials,
+        reqObj.options,
+        reqObj.deliveryMode);
+
+      this.killServerCallbacks.push(function() {
+        process.kill();
+      });
+
+      // Store this request, since we aren't responding now!
+      response.oauthServer = oauthServer; // hold it over the async call
+      this.pendingHoodiecrowResponsesById[serverId] = response;
+      response.processAsync();
+    }
+    else if (reqObj.command === 'hoodiecrow_ready') {
+      // The hoodiecrow node process will send us this message when it's ready.
+      var rsp = this.pendingHoodiecrowResponsesById[reqObj.serverId];
+      delete this.pendingHoodiecrowResponsesById[reqObj.serverId];
+      oauthServer = rsp.oauthServer; // retrieve it over the async call
+      if (!rsp) {
+        throw new Error('Got hoodiecrow_ready but no matching response?');
+      } else {
+        console.log('Hoodiecrow ready. controlUrl =', reqObj.controlUrl);
+        // Now, respond to the 'make_hoodiecrow' request that started it all.
+        var responseString = JSON.stringify(mergeOauthInfo({
+          controlUrl: reqObj.controlUrl,
+          imapHost: reqObj.imapHost,
+          imapPort: reqObj.imapPort,
+          smtpHost: reqObj.smtpHost,
+          smtpPort: reqObj.smtpPort
+        }));
+        rsp.setStatusLine('1.1', 200, 'OK');
+        rsp.setHeader('Content-Length', responseString.length.toString());
+        rsp.write(responseString);
+        rsp.finish();
+        // (And, return here to complete the request from hoodiecrow's node.)
+        return {};
+      }
+    }
+    else if (reqObj.command === 'make_imap_and_smtp') {
       // credentials should be { username, password }
       var imapServer = makeIMAPServer(reqObj.credentials, reqObj.options);
       var smtpServer = makeSMTPServer('imap',
@@ -459,16 +593,18 @@ console.log('----> responseData:::', responseData);
                                       reqObj.deliveryMode,
                                       reqObj.options.smtpExtensions,
                                       imapServer.daemon);
-      var oauthServer = null;
-      if (reqObj.options.oauth) {
-        oauthServer = makeOAuthServer(reqObj.options.oauth);
-      }
+
 
       console.log('IMAP server started on port', imapServer.port);
       console.log('SMTP server started on port', smtpServer.port);
 
+      this.killServerCallbacks.push(function() {
+        imapServer && imapServer.server.stop();
+        smtpServer && smtpServer.server.stop();
+      });
+
       var relPath = '/imap-' + imapServer.port;
-      var pairInfo = this.imapServerPairsByPort[imapServer.port] = {
+      var pairInfo = {
         relPath: relPath,
         imap: imapServer,
         smtp: smtpServer,
@@ -477,24 +613,13 @@ console.log('----> responseData:::', responseData);
 
       this._bindJsonHandler(relPath, pairInfo, this._handleImapBackdoor);
 
-      return {
+      return mergeOauthInfo({
         controlUrl: 'http://localhost:' + this.port + relPath,
         imapHost: 'localhost',
         imapPort: imapServer.port,
         smtpHost: 'localhost',
         smtpPort: smtpServer.port,
-        // ugh, when we move to node-centric this all needs to be made much
-        // cleaner...
-        oauthInfo: !oauthServer ? null :
-          {
-            authEndpoint:
-              'http://localhost:' + oauthServer.port + '/o/oauth2/auth',
-            tokenEndpoint:
-              'http://localhost:' + oauthServer.port + '/o/oauth2/token',
-            backdoor:
-              'http://localhost:' + oauthServer.port + '/backdoor'
-          }
-      };
+      });
     }
     else if (reqObj.command === 'make_pop3_and_smtp') {
       // credentials should be { username, password }
@@ -508,8 +633,13 @@ console.log('----> responseData:::', responseData);
       console.log('POP3 server started on port', pop3Server.port);
       console.log('SMTP server started on port', smtpServer.port);
 
+      this.killServerCallbacks.push(function() {
+        pop3Server && pop3Server.server.stop();
+        smtpServer && smtpServer.server.stop();
+      });
+
       relPath = '/pop3-' + pop3Server.port;
-      pairInfo = this.pop3ServerPairsByPort[pop3Server.port] = {
+      var pairInfo = {
         relPath: relPath,
         pop3: pop3Server,
         smtp: smtpServer
@@ -529,7 +659,6 @@ console.log('----> responseData:::', responseData);
       var serverInfo = makeActiveSyncServer(reqObj.credentials,
                                             reqObj.deliveryMode,
                                             reqObj.debug || false);
-      this.activeSyncServersByPort[serverInfo.port] = serverInfo;
       return {
         // the control URL is also the ActiveSync server
         url: 'http://localhost:' + serverInfo.port,
@@ -689,74 +818,18 @@ console.log('----> responseData:::', responseData);
     return pop3Daemon._messages.length;
   },
 
-  killActiveServers: function() {
-    var portStr;
-    for (portStr in this.imapServerPairsByPort) {
-      var servers = this.imapServerPairsByPort[portStr];
-      try {
-        servers.imap.server.stop();
-      }
-      catch (ex) {
-        console.warn('Problem shutting down IMAP server on port',
-                     servers.imap.port, '-', ex, '\n', ex.stack);
-      }
-      try {
-        servers.smtp.server.stop();
-      }
-      catch (ex) {
-        console.warn('Problem shutting down SMTP server on port',
-                     servers.smtp.port, '-', ex, '\n', ex.stack);
-      }
-      try {
-        if (servers.oauth) {
-          servers.oauth.server.stop();
-        }
-      }
-      catch (ex) {
-        console.warn('Problem shutting down OAuth server on port',
-                     servers.smtp.port, '-', ex, '\n', ex.stack);
-      }
-    }
-
-    for (portStr in this.pop3ServerPairsByPort) {
-      var servers = this.pop3ServerPairsByPort[portStr];
-      try {
-        servers.pop3.server.stop();
-      }
-      catch (ex) {
-        console.warn('Problem shutting down POP3 server on port',
-                     servers.pop3.port, '-', ex, '\n', ex.stack);
-      }
-      try {
-        servers.smtp.server.stop();
-      }
-      catch (ex) {
-        console.warn('Problem shutting down SMTP server on port',
-                     servers.smtp.port, '-', ex, '\n', ex.stack);
-      }
-    }
-
-    for (portStr in this.activeSyncServersByPort) {
-      var info = this.activeSyncServersByPort[portStr];
-      try {
-        info.server.stop();
-      }
-      catch (ex) {
-        console.warn('Problem shutting down ActiveSync server on port',
-                     info.port, '-', ex, '\n', ex.stack);
-      }
-    }
-
-    this.imapServerPairsByPort = Object.create(null);
-    this.pop3ServerPairsByPort = Object.create(null);
-    this.activeSyncServersByPort = Object.create(null);
-  },
-
   /**
    * per-test cleanup function; does not shut down the control server itself.
    */
   cleanup: function() {
-    this.killActiveServers();
+    while (this.killServerCallbacks.length) {
+      var killFn = this.killServerCallbacks.pop();
+      try {
+        killFn();
+      } catch(ex) {
+        console.warn('Exception while killing servers:', ex, ex.stack);
+      }
+    }
   },
 
   /**
@@ -785,6 +858,7 @@ function makeControlHttpServer() {
 
 return {
   makeIMAPServer: makeIMAPServer,
+  startHoodiecrowServer: startHoodiecrowServer,
   makePOP3Server: makePOP3Server,
   makeSMTPServer: makeSMTPServer,
   makeActiveSyncServer: makeActiveSyncServer,
