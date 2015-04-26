@@ -314,6 +314,9 @@ function startSmtpServer() {
     } else {
       withBufferAsString(req, function(body) {
         if (args.deliveryMode !== 'blackhole') {
+          // XXX we need to switch to https://github.com/andris9/smtp-server
+          // which understands how to do dot removal
+          body = body.replace(/\n\./g, '\n');
           imapServer.appendMessage(
             'INBOX',
             /* flags: */ [],
