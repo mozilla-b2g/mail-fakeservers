@@ -145,6 +145,82 @@ function updateCredentials(obj) {
   });
 }
 
+/**
+ * Create the folder configuration.  There are three modes:
+ *
+ * - "flat" / (default): The folders are not namespaced under the INBOX.
+ * - "underinbox": The folders are namespaced under the INBOX.  This is
+ *    historically done dynamically by issuing a
+ *    "moveSystemFoldersUnderneathInbox" request.
+ * - "custom": Uses the "folderConfig" idiom created prior to adopting
+ *    hoodiecrow.  This is being left as-is structurally for consistency with
+ *    the legacy imapd logic, but we should probably just change to directly
+ *    propagating the structure directly to what hoodiecrow consumes once we
+ *    need to make a significant change to this.
+ */
+function makeFolderStorage(modeOrConfig) {
+  var mode, folderDefs;
+  if (!modeOrConfig) {
+    mode = 'flat';
+  } else if (typeof(modeOrConfig) === 'string') {
+    mode = modeOrConfig;
+  } else if (!modeOrConfig.folders) {
+    if (modeOrConfig.underInbox) {
+      mode = 'underinbox';
+    } else {
+      mode = 'flat';
+    }
+  } else {
+    mode = 'custom';
+    folderDefs = modeOrConfig.folders;
+  }
+
+  if (mode === 'flat') {
+    return {
+      'INBOX': {},
+      '': { // (implied personal namespace)
+        separator: '/',
+        folders: {
+          'Drafts': { 'special-use': '\\Drafts' },
+          'Sent': { 'special-use': '\\Sent' },
+          'Trash': { 'special-use': '\\Trash' },
+          'Custom': { }
+        }
+      }
+    };
+  } else if (mode === 'underinbox') {
+    return {
+      'INBOX': {},
+      '': { // documentme: why is the personal namespace still under ''?
+        separator: '/',
+        folders: {
+          'INBOX/Drafts': { 'special-use': '\\Drafts' },
+          'INBOX/Sent': { 'special-use': '\\Sent' },
+          'INBOX/Trash': { 'special-use': '\\Trash' },
+          'INBOX/Custom': { }
+        }
+      }
+    };
+  } else if (mode === 'custom') {
+    var foldersByPath = {};
+    folderDefs.forEach(function(folderDef) {
+      var meta = {};
+      if (folderDef['special-use']) {
+        meta['special-use'] = folderDef['special-use'];
+      }
+      foldersByPath[folderDef.name] = meta;
+    });
+
+    return {
+      'INBOX': {},
+      '': { // (implied personal namespace)
+        separator: '/',
+        folders: foldersByPath
+      }
+    };
+  };
+}
+
 function handleRequest(msg) {
   switch (msg.command) {
     case 'getFolderByPath':
@@ -213,18 +289,7 @@ function handleRequest(msg) {
       break;
     case 'moveSystemFoldersUnderneathInbox':
       imapServer.folderCache = {};
-      imapServer.storage = {
-        'INBOX': {},
-        '': {
-          separator: '/',
-          folders: {
-            'INBOX/Drafts': { 'special-use': '\\Drafts' },
-            'INBOX/Sent': { 'special-use': '\\Sent' },
-            'INBOX/Trash': { 'special-use': '\\Trash' },
-            'INBOX/Custom': { }
-          }
-        }
-      };
+      imapServer.storage = makeFolderStorage('underinbox');
 
       imapServer.indexFolders();
       break;
@@ -281,18 +346,7 @@ function startImapServer() {
 
   var imapServer = hoodiecrow({
     debug: true,
-    storage: {
-      'INBOX': {},
-      '': {
-        separator: '/',
-        folders: {
-          'Drafts': { 'special-use': '\\Drafts' },
-          'Sent': { 'special-use': '\\Sent' },
-          'Trash': { 'special-use': '\\Trash' },
-          'Custom': { }
-        }
-      }
-    },
+    storage: makeFolderStorage(args.options.folderConfig),
     plugins: plugins,
   });
   imapServer.listen(0);
