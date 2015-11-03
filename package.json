@@ -1,8 +1,11 @@
 {
   "name": "mail-fakeservers",
-  "version": "0.0.41",
+  "version": "0.0.42-beta2",
   "description": "fake imap/pop3/smtp servers from comm-central",
   "main": "index.js",
+  "engines": {
+    "node": "^4 || ^5"
+  },
   "scripts": {
     "test": "make test"
   },
@@ -21,6 +24,6 @@
     "json-wire-protocol": "~0.2.1",
     "request": "^2.53.0",
     "simplesmtp": "^0.3.35",
-    "sockit-to-me": "0.3.2"
+    "sockit-to-me": "1.0.0-beta3"
   }
 }
