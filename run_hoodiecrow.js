@@ -157,6 +157,10 @@ function updateCredentials(obj) {
  *    the legacy imapd logic, but we should probably just change to directly
  *    propagating the structure directly to what hoodiecrow consumes once we
  *    need to make a significant change to this.
+ *
+ * NOTE: It turns out hoodiecrow has some (known, admitted) awkwardness with
+ * how it handles the INBOX folder and namespaces.  This should all be
+ * overhauled in conjunction with improving upstream hoodiecrow.
  */
 function makeFolderStorage(modeOrConfig) {
   var mode, folderDefs;
@@ -190,14 +194,16 @@ function makeFolderStorage(modeOrConfig) {
     };
   } else if (mode === 'underinbox') {
     return {
-      'INBOX': {},
-      '': { // documentme: why is the personal namespace still under ''?
+      'INBOX': {
+      },
+      'INBOX/': { // documentme: why is the personal namespace still under ''?
+        type: 'personal',
         separator: '/',
         folders: {
-          'INBOX/Drafts': { 'special-use': '\\Drafts' },
-          'INBOX/Sent': { 'special-use': '\\Sent' },
-          'INBOX/Trash': { 'special-use': '\\Trash' },
-          'INBOX/Custom': { }
+          'Drafts': { 'special-use': '\\Drafts' },
+          'Sent': { 'special-use': '\\Sent' },
+          'Trash': { 'special-use': '\\Trash' },
+          'Custom': { }
         }
       }
     };
@@ -211,13 +217,23 @@ function makeFolderStorage(modeOrConfig) {
       foldersByPath[folderDef.name] = meta;
     });
 
-    return {
-      'INBOX': {},
-      '': { // (implied personal namespace)
+    var storage = {
+      'INBOX': {}
+    };
+
+    if (modeOrConfig.underInbox) {
+      storage['INBOX/'] = {
+        type: 'personal',
         separator: '/',
         folders: foldersByPath
-      }
-    };
+      };
+    } else {
+      storage[''] = {
+        separator: '/',
+        folders: foldersByPath
+      };
+    }
+    return storage;
   };
 }
 
@@ -290,7 +306,9 @@ function handleRequest(msg) {
     case 'moveSystemFoldersUnderneathInbox':
       imapServer.folderCache = {};
       imapServer.storage = makeFolderStorage('underinbox');
-
+      // indexFolders is not intended to be used multiple times, irrevocably
+      // mutating referenceNamespace, so we need to reset it here.
+      imapServer.referenceNamespace = false;
       imapServer.indexFolders();
       break;
   }
